@@ -1,0 +1,31 @@
+# Resilient AI Challenge — dataset unifié + benchmark
+# Pinné pour Runpod (A100 40GB / RTX 4090 24GB)
+# Aligné sur les versions du document méthode (Resilience_IA_Distillation.pdf, §VI.2)
+
+torch>=2.2.0
+transformers>=4.44.0      # Gemma 3n natif (Gemma 4 : bumper la version au moment du kickoff)
+accelerate>=0.30.0
+peft>=0.10.0
+bitsandbytes>=0.43.0
+datasets>=2.20.0
+huggingface_hub>=0.24.0
+
+# Image processing
+Pillow>=10.0.0
+
+# Métriques
+evaluate>=0.4.0           # BLEU, CIDEr wrappers, Meteor
+nltk>=3.8                 # Tokenisation pour CIDEr / METEOR
+rouge-score>=0.1.2
+scipy>=1.11
+numpy>=1.26
+
+# Energy tracking — c'est la métrique de ranking #1 du challenge (PEReN)
+codecarbon>=2.4.0         # EmissionsTracker, version stable mi-2026
+nvidia-ml-py>=12.535      # python bindings NVML pour fallback / hardware fingerprint
+psutil>=5.9               # CPU / RAM stats pour codecarbon + registry
+
+# Utilitaires
+tqdm>=4.66
+pydantic>=2.5
+python-Levenshtein>=0.25  # ANLS pour DocVQA
