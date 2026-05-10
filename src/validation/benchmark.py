@@ -342,21 +342,48 @@ def evaluate_model(
 # ----------------------------------------------------------------------------
 
 def make_gemma_generate_fn(model, processor, max_new_tokens: int = 32, device: str = "cuda"):
-    """Retourne une GenerateFn prête à être branchée sur evaluate_model.
+    """Retourne une GenerateFn alignée sur les métriques du benchmark.
 
-    Compatible Gemma 3n (transformers ≥ 4.44) ; pour Gemma 4 post-kickoff,
-    adapter la classe du processor si nécessaire (AutoProcessor devrait
-    suffire si le support a été ajouté côté `transformers`).
+    Trois adaptations critiques par rapport à la naive version :
+      - Multiple choice : on injecte les choices avec lettres A/B/C/D et on
+        force "ONLY the letter" sinon Gemma répond par le contenu textuel
+        ("a dog") au lieu d'une lettre.
+      - VQA : Gemma 4-it est très verbeux ("The answer is **plaid** or
+        checked..."). On instruit "as few words as possible, no markdown,
+        no explanation" + on post-traite pour stripper le markdown et
+        couper à la 1ère ligne.
+      - Captioning : on borne à une phrase courte pour que CIDEr/BLEU ne
+        soient pas écrasés par les paragraphes descriptifs.
+
+    Compatible Gemma 3n / 4-it (transformers ≥ 4.44).
     """
     import torch
 
     def _gen(image, prompt, sample=None, **kwargs) -> str:
+        s = sample or {}
+        task = s.get("task", "vqa")
+        choices = s.get("choices") or []
+
+        if task == "multiple_choice" and choices:
+            labeled = "\n".join(f"{chr(65 + i)}. {c}" for i, c in enumerate(choices))
+            text = (
+                f"{(prompt or '').strip()}\n\n{labeled}\n\n"
+                "Answer with ONLY the letter (A, B, C, ...) of the correct choice."
+            )
+        elif task == "captioning":
+            text = "Describe this image in one short sentence. No explanation, no markdown."
+        else:  # vqa
+            text = (
+                f"{(prompt or '').strip()}\n\n"
+                "Answer in as few words as possible. No explanation, no markdown."
+            )
+
         messages = [
             {
                 "role": "user",
                 "content": [
                     {"type": "image", "image": image},
-                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": text},
                 ],
             }
         ]
@@ -374,9 +401,28 @@ def make_gemma_generate_fn(model, processor, max_new_tokens: int = 32, device: s
                 do_sample=False,
             )
         new_tokens = out[:, inputs["input_ids"].shape[-1]:]
-        return processor.batch_decode(new_tokens, skip_special_tokens=True)[0].strip()
+        raw = processor.batch_decode(new_tokens, skip_special_tokens=True)[0]
+        return _post_process_pred(raw, task)
 
     return _gen
+
+
+def _post_process_pred(text: str, task: str) -> str:
+    """Nettoie la réponse Gemma pour matcher les ground truth normalisés.
+
+    - strippe le markdown bold/italic (**...**, *...*)
+    - garde uniquement la 1ère ligne (Gemma adore enchaîner avec des
+      bullet points "Here's why: ...")
+    - pour les MC, extrait la première lettre A-E si présente
+    """
+    import re as _re
+    text = _re.sub(r"\*+", "", text).strip()
+    text = text.split("\n", 1)[0].strip()
+    if task == "multiple_choice":
+        m = _re.search(r"\b([A-E])\b", text)
+        if m:
+            return m.group(1)
+    return text
 
 
 # ----------------------------------------------------------------------------
