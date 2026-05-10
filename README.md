@@ -69,6 +69,88 @@ Le ranking PEReN est dominé par l'énergie (CodeCarbon) **après** le seuil
 └── README.md
 ```
 
+## Reprise rapide sur Runpod (après stop du pod)
+
+**État connu au moment de la pause** (2026-05-11) :
+- Pod sur Runpod EU-CZ-1 avec image `ghcr.io/Thibault-GAREL/ilab_hackathon-resiliant_ai-dataset_unifi-benchmark:latest`
+- Dataset à `/workspace/code/data/unified` (DatasetDict, split `test`, 36117 samples)
+- Cache HF redirigé sur `/workspace/hf-cache` (369 TB / quota perso ~80 GB)
+- 2 modèles déjà dans `results/registry.csv` : `gemma4-e4b-bf16` (macro=0.40) et `gemma4-e2b-bf16` (macro=0.36)
+- `bench_safe.sh` orchestrera les 6 modèles restants (quantifiés bnb-4bit + AWQ) après reprise
+
+### Étape 1 — Démarre le pod sur Runpod
+
+`Pods → ton pod arrêté → Start`. Le volume `/workspace` et le cache HF sont préservés.
+
+### Étape 2 — Reconnecte en SSH et restore l'environnement
+
+```bash
+# Le HF_HOME est déjà persisté dans ~/.bashrc, mais re-source au cas où
+source ~/.bashrc
+echo "HF_HOME=$HF_HOME"   # doit afficher /workspace/hf-cache
+
+# Vérifie que tu es bien loggé HF (le token est dans /workspace/hf-cache/stored_tokens)
+hf auth whoami
+
+# Si git pas installé sur cette session :
+apt-get update -qq && apt-get install -y -qq git
+```
+
+### Étape 3 — Pull le code à jour
+
+Le repo `/tmp/repo` est éphémère (perdu au stop). Re-clone et propage les patches :
+
+```bash
+rm -rf /tmp/repo
+git clone --depth 1 https://github.com/Thibault-GAREL/ILab_Hackathon-Resiliant_AI-Dataset_unifi-Benchmark.git /tmp/repo
+
+# Copie les fichiers patchés (benchmark.py, eval_loop.py, models.yaml, bench_safe.sh)
+cp /tmp/repo/src/validation/benchmark.py /app/src/validation/benchmark.py
+cp /tmp/repo/scripts/eval_loop.py        /app/scripts/eval_loop.py
+cp /tmp/repo/configs/models.yaml         /app/configs/models.yaml
+cp /tmp/repo/scripts/bench_safe.sh       /app/scripts/bench_safe.sh
+chmod +x /app/scripts/bench_safe.sh
+
+# Vérifications rapides
+grep "Answer in as few words" /app/src/validation/benchmark.py   # fix prompt
+grep "is_4bit" /app/scripts/eval_loop.py                          # fix FP4
+python -m py_compile /app/scripts/eval_loop.py && echo "✅ compile OK"
+```
+
+### Étape 4 — Lance le batch (~40-60 min, ~0.30 €)
+
+```bash
+cd /app
+nohup bash scripts/bench_safe.sh > /workspace/bench.log 2>&1 &
+disown
+tail -f /workspace/bench.log
+```
+
+Le script `bench_safe.sh` :
+- skip les modèles déjà fait (presence de `reports/<label>.json`)
+- cleanup le cache HF immédiatement après chaque modèle (libère ~10 GB)
+- safety check : abort si moins de 20 GB libres sur `/workspace`
+- continue même si un modèle échoue (download / runtime)
+
+### Étape 5 — Récupère le registry sur ton PC
+
+```bash
+# Sur le pod
+runpodctl send /app/results/registry.csv
+# Affiche un code style "1234-galileo-thunder"
+```
+
+```powershell
+# Sur ton PC (PowerShell)
+runpodctl receive 1234-galileo-thunder
+```
+
+### Étape 6 — Stop le pod (économie)
+
+Une fois le batch fini et les résultats récupérés :
+- **Stop** le pod (préserve le volume `/workspace` + cache HF, facturation minimale)
+- **Terminate** uniquement si tu n'en as plus besoin du tout (supprime le volume)
+
 ## Installation
 
 ### Local (Windows + venv `pytorch_cuda_env`)
