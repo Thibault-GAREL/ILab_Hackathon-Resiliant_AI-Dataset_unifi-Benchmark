@@ -267,7 +267,7 @@ def main() -> int:
         agg_snap.n_samples = sum(r.n_samples for r in bench_result.per_source)
     else:
         # Pas de tracking → on construit un snapshot vide pour le registry
-        from energy_tracker import EnergySnapshot, hardware_fingerprint
+        from src.tracking.energy_tracker import EnergySnapshot, hardware_fingerprint
         import uuid
         agg_snap = EnergySnapshot(
             run_id=uuid.uuid4().hex[:12],
