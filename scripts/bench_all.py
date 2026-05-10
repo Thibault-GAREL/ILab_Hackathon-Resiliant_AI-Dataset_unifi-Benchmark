@@ -46,21 +46,27 @@ def load_config() -> dict:
 
 
 def _print_model_table(models: list[dict]) -> None:
-    print(f"{'LABEL':<28} {'EXTRAS':<14} MODEL_PATH")
-    print("-" * 90)
+    print(f"{'LABEL':<28} {'BACKEND':<11} {'EXTRAS':<14} MODEL")
+    print("-" * 100)
     for m in models:
+        backend = m.get("backend", "transformers")
         extras = m.get("extras", "-")
-        print(f"{m['label']:<28} {extras:<14} {m['model_path']}")
+        if backend == "llama_cpp":
+            model_str = f"{m['gguf_repo']}/{m['gguf_filename']}"
+        else:
+            model_str = m["model_path"]
+        print(f"{m['label']:<28} {backend:<11} {extras:<14} {model_str}")
 
 
 def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
     label = model["label"]
     out_path = REPORTS_DIR / f"{label}.json"
+    backend = model.get("backend", "transformers")
 
     cmd = [
         sys.executable, str(EVAL_LOOP),
         "--mode", "real",
-        "--model_path", model["model_path"],
+        "--backend", backend,
         "--dataset_hub", args.dataset_hub or defaults["dataset_hub"],
         "--split", args.split or defaults["split"],
         "--subsample_pct", str(args.subsample_pct or defaults["subsample_pct"]),
@@ -71,6 +77,23 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
         "--notes", model.get("notes", ""),
         "--out", str(out_path),
     ]
+
+    if backend == "llama_cpp":
+        cmd += [
+            "--gguf_repo", model["gguf_repo"],
+            "--gguf_filename", model["gguf_filename"],
+            "--model_family", model.get("model_family", "gemma3"),
+            "--n_gpu_layers", str(model.get("n_gpu_layers", -1)),
+            "--n_ctx", str(model.get("n_ctx", 2048)),
+        ]
+        if model.get("mmproj_repo") and model.get("mmproj_filename"):
+            cmd += [
+                "--mmproj_repo", model["mmproj_repo"],
+                "--mmproj_filename", model["mmproj_filename"],
+            ]
+    else:
+        cmd += ["--model_path", model["model_path"]]
+
     return cmd
 
 
@@ -136,7 +159,11 @@ def main() -> int:
             print(f"[{i}/{len(selected)}] SKIP {label} — {out_path} existe déjà")
             continue
 
-        print(f"\n[{i}/{len(selected)}] ▶ {label}  ({model['model_path']})")
+        if model.get("backend") == "llama_cpp":
+            model_str = f"{model['gguf_repo']}/{model['gguf_filename']}"
+        else:
+            model_str = model["model_path"]
+        print(f"\n[{i}/{len(selected)}] ▶ {label}  ({model_str})")
         cmd = _build_eval_cmd(model, defaults, args)
 
         if args.dry_run:

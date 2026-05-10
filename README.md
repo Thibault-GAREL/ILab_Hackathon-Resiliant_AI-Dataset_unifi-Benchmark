@@ -186,7 +186,9 @@ Puis ouvre `results/registry.csv` dans Excel ou pandas pour trier par
 
 ## Modifier la liste de modèles
 
-Édite [configs/models.yaml](configs/models.yaml). Format :
+Édite [configs/models.yaml](configs/models.yaml). Format selon le backend :
+
+### Backend `transformers` (défaut)
 
 ```yaml
 models:
@@ -196,13 +198,37 @@ models:
     extras: bitsandbytes         # optionnel : dépendance pip à installer
 ```
 
-⚠️ **Compatibilité formats** :
-- ✅ Safetensors BF16 (Google officiel) — natif transformers
-- ✅ bitsandbytes 4-bit (`*-bnb-4bit`) — `pip install bitsandbytes`
-- ✅ AWQ (`*-AWQ-4bit`) — `pip install autoawq`
-- ❌ GGUF (`bartowski`, `unsloth UD-*`) — nécessite backend `llama-cpp-python` (V2)
-- ❌ MLX — Apple Silicon uniquement
-- ❌ UQFF — runtime `mistral.rs` séparé
+### Backend `llama_cpp` (GGUF multimodal)
+
+```yaml
+models:
+  - label: mon-gguf-q4km
+    backend: llama_cpp
+    gguf_repo: bartowski/mon-modele-GGUF       # repo HF (ou chemin local)
+    gguf_filename: "*Q4_K_M.gguf"               # glob accepté côté HF Hub
+    mmproj_repo: bartowski/mon-modele-GGUF      # multimodal projector
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4                        # gemma3 / gemma4 / llava
+    notes: "GGUF Q4_K_M via llama.cpp"
+```
+
+### Compatibilité formats
+
+| Format | Backend | Statut |
+|---|---|---|
+| Safetensors BF16 (Google officiel) | `transformers` | ✅ Stable |
+| bitsandbytes 4-bit (`*-bnb-4bit`) | `transformers` + `bitsandbytes` | ✅ Stable |
+| AWQ (`*-AWQ-4bit`) | `transformers` + `autoawq` | ✅ Stable |
+| GGUF imatrix (bartowski Q*/IQ*) | `llama_cpp` | ⚠️ Expérimental |
+| GGUF Dynamic (unsloth UD-*) | `llama_cpp` | ⚠️ Expérimental |
+| MLX | – | ❌ Apple Silicon only |
+| UQFF | – | ❌ Runtime `mistral.rs` séparé |
+
+⚠️ **Le multimodal Gemma en GGUF dépend de la version de `llama-cpp-python`**.
+Le Dockerfile installe le wheel CUDA 12.1 le plus récent, mais le support
+`Gemma3ChatHandler` peut nécessiter une montée de version. Si un modèle GGUF
+plante au chargement, le backend `transformers` reste la référence pour
+l'équipe.
 
 ## Build du dataset (one-shot, ~20 GB+)
 

@@ -94,9 +94,30 @@ def _make_generate_fn(args):
         return oracle_generate_fn(), "oracle"
     if args.mode == "constant":
         return constant_generate_fn(args.constant_answer), f"constant:{args.constant_answer}"
-    # real
+
+    # real — route entre les backends transformers et llama-cpp-python
+    if args.backend == "llama_cpp":
+        if not args.gguf_repo or not args.gguf_filename:
+            raise SystemExit(
+                "--backend llama_cpp requiert --gguf_repo et --gguf_filename."
+            )
+        from src.models.llama_cpp_backend import make_llama_cpp_generate_fn
+        gen_fn = make_llama_cpp_generate_fn(
+            gguf_repo=args.gguf_repo,
+            gguf_filename=args.gguf_filename,
+            mmproj_repo=args.mmproj_repo,
+            mmproj_filename=args.mmproj_filename,
+            max_new_tokens=args.max_new_tokens,
+            n_gpu_layers=args.n_gpu_layers,
+            n_ctx=args.n_ctx,
+            model_family=args.model_family,
+        )
+        model_id = f"{args.gguf_repo}/{args.gguf_filename}"
+        return gen_fn, model_id
+
+    # transformers (défaut)
     if not args.model_path:
-        raise SystemExit("--model_path requis en mode real.")
+        raise SystemExit("--model_path requis en mode real avec backend transformers.")
     import torch
     from transformers import AutoModelForImageTextToText, AutoProcessor
     print(f"[load] {args.model_path} sur {args.device}…")
@@ -120,10 +141,34 @@ def main() -> int:
 
     # ----- Modèle ---------------------------------------------------------
     ap.add_argument("--mode", choices=["real", "oracle", "constant"], default="real")
-    ap.add_argument("--model_path", default=None)
+    ap.add_argument("--backend", choices=["transformers", "llama_cpp"],
+                    default="transformers",
+                    help="Backend d'inférence. transformers = HF safetensors / "
+                         "bnb-4bit / AWQ. llama_cpp = GGUF via llama-cpp-python.")
+    ap.add_argument("--model_path", default=None,
+                    help="Repo HF ou chemin local — requis si backend=transformers.")
     ap.add_argument("--constant_answer", default="unknown")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--max_new_tokens", type=int, default=32)
+
+    # ----- Backend llama-cpp-python (GGUF) -------------------------------
+    ap.add_argument("--gguf_repo", default=None,
+                    help="Repo HF (ex: bartowski/gemma-3n-E4B-it-GGUF) "
+                         "ou dossier local contenant le .gguf.")
+    ap.add_argument("--gguf_filename", default=None,
+                    help="Nom du fichier .gguf principal (glob accepté côté HF).")
+    ap.add_argument("--mmproj_repo", default=None,
+                    help="Repo HF du mmproj-*.gguf (multimodal projector).")
+    ap.add_argument("--mmproj_filename", default=None,
+                    help="Nom du fichier mmproj-*.gguf.")
+    ap.add_argument("--model_family", default="gemma3",
+                    help="Famille du modèle (gemma3 / gemma4 / llava). "
+                         "Pilote le ChatHandler llama.cpp.")
+    ap.add_argument("--n_gpu_layers", type=int, default=-1,
+                    help="-1 = toutes les couches sur GPU. 0 = CPU only. "
+                         "Override pour fit dans une VRAM limitée.")
+    ap.add_argument("--n_ctx", type=int, default=2048,
+                    help="Taille du contexte llama.cpp.")
 
     # ----- Dataset interne ------------------------------------------------
     ap.add_argument("--dataset_local", default=None,

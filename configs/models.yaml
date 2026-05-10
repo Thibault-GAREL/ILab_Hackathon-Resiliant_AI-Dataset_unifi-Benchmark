@@ -1,12 +1,13 @@
 # =============================================================================
 # Liste des modèles à benchmarker via scripts/bench_all.py.
 #
-# Tous les modèles listés ici sont compatibles avec le pipeline transformers
-# (AutoModelForImageTextToText + safetensors). Les formats GGUF / MLX / UQFF
-# nécessiteraient un backend séparé (llama.cpp, mlx, mistral.rs) — V2.
+# 2 backends supportés :
+#   - transformers (défaut) : safetensors BF16 / bnb-4bit / AWQ
+#   - llama_cpp             : GGUF via llama-cpp-python (image Docker fournie)
 #
 # `extras` indique une dépendance pip optionnelle à installer sur le pod
-# avant de lancer ce modèle (cf. scripts/runpod_setup.sh).
+# avant de lancer ce modèle (cf. scripts/runpod_setup.sh ou Dockerfile).
+# Pour le backend llama_cpp, llama-cpp-python est déjà dans le Dockerfile.
 # =============================================================================
 
 defaults:
@@ -18,12 +19,15 @@ defaults:
   max_new_tokens: 32
 
 models:
+  # =========================================================================
+  # Backend transformers — safetensors / bnb-4bit / AWQ
+  # =========================================================================
+
   # ---- Plafond qualité ----------------------------------------------------
   - label: gemma4-e4b-bf16
     model_path: google/gemma-4-E4B-it
-    notes: "Gemma 4 E4B-it BF16 — plafond qualité, baseline non compressée"
+    notes: "Gemma 4 E4B-it BF16 — plafond qualité"
 
-  # ---- Référence Gemma 3n (mentionnée dans le README projet) ---------------
   - label: gemma3n-e4b-bf16
     model_path: google/gemma-3n-E4B-it
     notes: "Gemma 3n E4B-it BF16 — référence kickoff projet"
@@ -32,12 +36,12 @@ models:
   - label: gemma4-e4b-bnb4
     model_path: unsloth/gemma-4-E4B-it-bnb-4bit
     extras: bitsandbytes
-    notes: "NF4 standard via bitsandbytes — référence 4-bit boring"
+    notes: "NF4 standard via bitsandbytes"
 
   - label: gemma4-e4b-bnb4-dyn
     model_path: unsloth/gemma-4-E4B-it-unsloth-bnb-4bit
     extras: bitsandbytes
-    notes: "Dynamic NF4 unsloth — référence 4-bit intelligente"
+    notes: "Dynamic NF4 unsloth"
 
   # ---- AWQ (compresseur GPU-natif) ----------------------------------------
   - label: gemma4-e4b-awq4
@@ -48,21 +52,127 @@ models:
   # ---- Borne basse : modèle 2x plus petit (E2B) ---------------------------
   - label: gemma4-e2b-bf16
     model_path: google/gemma-4-E2B-it
-    notes: "Gemma 4 E2B-it BF16 — borne basse, modèle 2x plus petit"
-
-  - label: gemma4-e2b-bnb4
-    model_path: unsloth/gemma-4-E2B-it-bnb-4bit
-    extras: bitsandbytes
-    notes: "E2B compressé NF4"
+    notes: "Gemma 4 E2B-it BF16 — borne basse"
 
   - label: gemma4-e2b-bnb4-dyn
     model_path: unsloth/gemma-4-E2B-it-unsloth-bnb-4bit
     extras: bitsandbytes
     notes: "E2B compressé Dynamic NF4"
 
+  # =========================================================================
+  # Backend llama_cpp — GGUF (bartowski + unsloth Dynamic UD-*)
+  #
+  # ⚠️ Le multimodal Gemma en llama.cpp est récent — vérifier que le mmproj
+  # est bien co-localisé dans le repo et que la version installée de
+  # llama-cpp-python le supporte.
+  # =========================================================================
+
+  # ---- bartowski : grille standard imatrix Q* / IQ* ----------------------
+  - label: gemma4-e4b-gguf-q8
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q8_0.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q8_0 — quasi-lossless (sanity check)"
+
+  - label: gemma4-e4b-gguf-q6
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q6_K.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q6_K"
+
+  - label: gemma4-e4b-gguf-q4km
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q4_K_M.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q4_K_M — référence 4-bit communauté"
+
+  - label: gemma4-e4b-gguf-iq4xs
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*IQ4_XS.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF IQ4_XS — plus petit que Q4 avec qualité similaire"
+
+  - label: gemma4-e4b-gguf-q3km
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q3_K_M.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q3_K_M — régime 3-bit"
+
+  - label: gemma4-e4b-gguf-iq3m
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*IQ3_M.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF IQ3_M — agressif"
+
+  - label: gemma4-e4b-gguf-iq2m
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*IQ2_M.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF IQ2_M — très agressif (test de plancher qualité)"
+
+  # ---- unsloth Dynamic 2.0 — meilleur 4-bit "intelligent" ----------------
+  - label: gemma4-e4b-gguf-ud-q4xl
+    backend: llama_cpp
+    gguf_repo: unsloth/gemma-4-E4B-it-GGUF
+    gguf_filename: "*UD-Q4_K_XL.gguf"
+    mmproj_repo: unsloth/gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*"
+    model_family: gemma4
+    notes: "GGUF Dynamic UD-Q4_K_XL — référence 4-bit Dynamic"
+
+  - label: gemma4-e4b-gguf-ud-q3xl
+    backend: llama_cpp
+    gguf_repo: unsloth/gemma-4-E4B-it-GGUF
+    gguf_filename: "*UD-Q3_K_XL.gguf"
+    mmproj_repo: unsloth/gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*"
+    model_family: gemma4
+    notes: "GGUF Dynamic UD-Q3_K_XL"
+
+  # ---- E2B GGUF (borne basse en GGUF) -------------------------------------
+  - label: gemma4-e2b-gguf-q4km
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E2B-it-GGUF
+    gguf_filename: "*Q4_K_M.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E2B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF E2B Q4_K_M — borne basse"
+
+  - label: gemma4-e2b-gguf-ud-q4xl
+    backend: llama_cpp
+    gguf_repo: unsloth/gemma-4-E2B-it-GGUF
+    gguf_filename: "*UD-Q4_K_XL.gguf"
+    mmproj_repo: unsloth/gemma-4-E2B-it-GGUF
+    mmproj_filename: "mmproj-*"
+    model_family: gemma4
+    notes: "GGUF E2B Dynamic UD-Q4_K_XL"
+
 # =============================================================================
-# TODO V2 — backends à ajouter pour couvrir GGUF / MLX / UQFF :
-#   - llama-cpp-python avec mmproj pour GGUF (bartowski, unsloth UD-Q*)
-#   - mlx-vlm pour MLX (uniquement Apple Silicon, pas Runpod)
-#   - mistral.rs server pour UQFF
+# Notes :
+#   - MLX (mlx-community/*) : Apple Silicon uniquement, pas Runpod.
+#   - UQFF (mistralrs-community/*) : runtime mistral.rs séparé, pas couvert.
+#   - Variantes communautaires fine-tunées (HauhauCS, Gemopus) exclues — pas
+#     des compressions vanilla, biaisent le benchmark.
 # =============================================================================
