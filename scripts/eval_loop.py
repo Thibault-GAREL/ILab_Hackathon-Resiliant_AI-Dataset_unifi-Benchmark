@@ -121,11 +121,20 @@ def _make_generate_fn(args):
     import torch
     from transformers import AutoModelForImageTextToText, AutoProcessor
     print(f"[load] {args.model_path} sur {args.device}…")
-    model = AutoModelForImageTextToText.from_pretrained(
-        args.model_path,
-        torch_dtype=torch.bfloat16,
-        device_map=args.device,
-    )
+
+    # Workaround pour les modèles bitsandbytes 4-bit : passer device_map='cuda'
+    # à from_pretrained() casse l'init du FP4 quantization state sur Gemma 4
+    # (AssertionError bitsandbytes:415, FP4 state not initialized). Solution :
+    # charger sur CPU puis .to(cuda) après — les couches FP4 sont alors
+    # initialisées correctement par le .to() qui appelle .cuda() en interne.
+    is_4bit = ('4bit' in args.model_path.lower()) or ('bnb' in args.model_path.lower())
+    load_kwargs = {"torch_dtype": torch.bfloat16}
+    if not is_4bit:
+        load_kwargs["device_map"] = args.device
+
+    model = AutoModelForImageTextToText.from_pretrained(args.model_path, **load_kwargs)
+    if is_4bit:
+        model = model.to(args.device)
     model.eval()
     processor = AutoProcessor.from_pretrained(args.model_path)
     gen_fn = make_gemma_generate_fn(

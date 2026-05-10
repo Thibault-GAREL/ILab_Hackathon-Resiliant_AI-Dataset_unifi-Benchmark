@@ -30,36 +30,42 @@ models:
     model_path: google/gemma-4-E4B-it
     notes: "Gemma 4 E4B-it BF16 — plafond qualité"
 
-  - label: gemma3n-e4b-bf16
-    model_path: google/gemma-3n-E4B-it
-    notes: "Gemma 3n E4B-it BF16 — référence kickoff projet"
+  - label: gemma4-e2b-bf16
+    model_path: google/gemma-4-E2B-it
+    notes: "Gemma 4 E2B-it BF16 — borne basse, 2x plus petit"
 
-  # ---- Quantification 4-bit via bitsandbytes (NF4) ------------------------
-  - label: gemma4-e4b-bnb4
-    model_path: unsloth/gemma-4-E4B-it-bnb-4bit
-    extras: bitsandbytes
-    notes: "NF4 standard via bitsandbytes"
-
+  # ---- Quantification 4-bit via bitsandbytes (NF4 Dynamic) ----------------
+  # Noms réels vérifiés sur HF : seul unsloth-bnb-4bit existe pour gemma-4.
   - label: gemma4-e4b-bnb4-dyn
     model_path: unsloth/gemma-4-E4B-it-unsloth-bnb-4bit
     extras: bitsandbytes
-    notes: "Dynamic NF4 unsloth"
-
-  # ---- AWQ (compresseur GPU-natif) ----------------------------------------
-  - label: gemma4-e4b-awq4
-    model_path: cyankiwi/gemma-4-E4B-it-AWQ-4bit
-    extras: autoawq
-    notes: "AWQ 4-bit — quantization KL-aware GPU-natif"
-
-  # ---- Borne basse : modèle 2x plus petit (E2B) ---------------------------
-  - label: gemma4-e2b-bf16
-    model_path: google/gemma-4-E2B-it
-    notes: "Gemma 4 E2B-it BF16 — borne basse"
+    notes: "Dynamic NF4 unsloth (E4B)"
 
   - label: gemma4-e2b-bnb4-dyn
     model_path: unsloth/gemma-4-E2B-it-unsloth-bnb-4bit
     extras: bitsandbytes
-    notes: "E2B compressé Dynamic NF4"
+    notes: "Dynamic NF4 unsloth (E2B)"
+
+  # ---- AWQ (compresseur GPU-natif) ----------------------------------------
+  - label: gemma4-e4b-awq-chunity
+    model_path: Chunity/gemma-4-E4B-it-AWQ-4bit
+    extras: autoawq
+    notes: "AWQ 4-bit Chunity"
+
+  - label: gemma4-e4b-awq-cyankiwi-int4
+    model_path: cyankiwi/gemma-4-E4B-it-AWQ-INT4
+    extras: autoawq
+    notes: "AWQ INT4 cyankiwi"
+
+  - label: gemma4-e4b-awq-cyankiwi-int8
+    model_path: cyankiwi/gemma-4-E4B-it-AWQ-INT8
+    extras: autoawq
+    notes: "AWQ INT8 cyankiwi — moins agressif, qualité meilleure attendue"
+
+  - label: gemma4-e4b-awq-autoround
+    model_path: Vishva007/gemma-4-E4B-it-W4A16-AutoRound-AWQ
+    extras: autoawq
+    notes: "AWQ W4A16 AutoRound — variante mixed-precision"
 
   # =========================================================================
   # Backend llama_cpp — GGUF (bartowski + unsloth Dynamic UD-*)
