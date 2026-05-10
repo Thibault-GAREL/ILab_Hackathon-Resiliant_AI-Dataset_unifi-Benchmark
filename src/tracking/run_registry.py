@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from energy_tracker import EnergySnapshot, derive_efficiency_metrics
+from src.tracking.energy_tracker import EnergySnapshot, derive_efficiency_metrics
 
 
 # ---------------------------------------------------------------------------

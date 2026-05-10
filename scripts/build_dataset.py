@@ -31,7 +31,9 @@ import json
 import sys
 from pathlib import Path
 
-from config import (
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.config import (
     ALL_DATASETS,
     DEFAULT_HUB_REPO,
     DATASET_VERSION,
@@ -40,7 +42,7 @@ from config import (
     TIER1,
     TIER2,
 )
-from mix import (
+from src.data.mix import (
     build_source_splits,
     compose_train,
     compose_eval,
@@ -48,7 +50,7 @@ from mix import (
     compute_weights,
     describe_mix,
 )
-from schema import UnifiedSample, hf_features
+from src.data.schema import UnifiedSample, hf_features
 
 
 def _samples_to_hf_dict(samples: list[UnifiedSample]) -> list[dict]:

@@ -1,0 +1,68 @@
+# =============================================================================
+# Liste des modèles à benchmarker via scripts/bench_all.py.
+#
+# Tous les modèles listés ici sont compatibles avec le pipeline transformers
+# (AutoModelForImageTextToText + safetensors). Les formats GGUF / MLX / UQFF
+# nécessiteraient un backend séparé (llama.cpp, mlx, mistral.rs) — V2.
+#
+# `extras` indique une dépendance pip optionnelle à installer sur le pod
+# avant de lancer ce modèle (cf. scripts/runpod_setup.sh).
+# =============================================================================
+
+defaults:
+  dataset_hub: ECE-ILAB/resilient-ai-unified
+  subsample_pct: 10        # 100 = full split (run final avant soumission)
+  country_iso: USA         # FRA si pod europe
+  split: test
+  device: cuda
+  max_new_tokens: 32
+
+models:
+  # ---- Plafond qualité ----------------------------------------------------
+  - label: gemma4-e4b-bf16
+    model_path: google/gemma-4-E4B-it
+    notes: "Gemma 4 E4B-it BF16 — plafond qualité, baseline non compressée"
+
+  # ---- Référence Gemma 3n (mentionnée dans le README projet) ---------------
+  - label: gemma3n-e4b-bf16
+    model_path: google/gemma-3n-E4B-it
+    notes: "Gemma 3n E4B-it BF16 — référence kickoff projet"
+
+  # ---- Quantification 4-bit via bitsandbytes (NF4) ------------------------
+  - label: gemma4-e4b-bnb4
+    model_path: unsloth/gemma-4-E4B-it-bnb-4bit
+    extras: bitsandbytes
+    notes: "NF4 standard via bitsandbytes — référence 4-bit boring"
+
+  - label: gemma4-e4b-bnb4-dyn
+    model_path: unsloth/gemma-4-E4B-it-unsloth-bnb-4bit
+    extras: bitsandbytes
+    notes: "Dynamic NF4 unsloth — référence 4-bit intelligente"
+
+  # ---- AWQ (compresseur GPU-natif) ----------------------------------------
+  - label: gemma4-e4b-awq4
+    model_path: cyankiwi/gemma-4-E4B-it-AWQ-4bit
+    extras: autoawq
+    notes: "AWQ 4-bit — quantization KL-aware GPU-natif"
+
+  # ---- Borne basse : modèle 2x plus petit (E2B) ---------------------------
+  - label: gemma4-e2b-bf16
+    model_path: google/gemma-4-E2B-it
+    notes: "Gemma 4 E2B-it BF16 — borne basse, modèle 2x plus petit"
+
+  - label: gemma4-e2b-bnb4
+    model_path: unsloth/gemma-4-E2B-it-bnb-4bit
+    extras: bitsandbytes
+    notes: "E2B compressé NF4"
+
+  - label: gemma4-e2b-bnb4-dyn
+    model_path: unsloth/gemma-4-E2B-it-unsloth-bnb-4bit
+    extras: bitsandbytes
+    notes: "E2B compressé Dynamic NF4"
+
+# =============================================================================
+# TODO V2 — backends à ajouter pour couvrir GGUF / MLX / UQFF :
+#   - llama-cpp-python avec mmproj pour GGUF (bartowski, unsloth UD-Q*)
+#   - mlx-vlm pour MLX (uniquement Apple Silicon, pas Runpod)
+#   - mistral.rs server pour UQFF
+# =============================================================================

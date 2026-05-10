@@ -57,7 +57,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from benchmark import (
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.validation.benchmark import (
     evaluate_model,
     make_gemma_generate_fn,
     constant_generate_fn,
@@ -65,12 +67,12 @@ from benchmark import (
     DEFAULT_SUBSAMPLE_PCT,
     DEFAULT_SUBSAMPLE_SEED,
 )
-from energy_tracker import (
+from src.tracking.energy_tracker import (
     EnergyTracker,
     aggregate_snapshots,
     derive_efficiency_metrics,
 )
-from run_registry import (
+from src.tracking.run_registry import (
     RegistryEntry,
     append_to_registry,
     dump_run_artifacts,

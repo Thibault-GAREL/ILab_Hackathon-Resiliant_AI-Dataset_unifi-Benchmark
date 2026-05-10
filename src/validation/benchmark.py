@@ -36,12 +36,12 @@ from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from metrics import (
+from src.validation.metrics import (
     score_sample,
     cider_corpus,
     normalize_answer,
 )
-from energy_tracker import (
+from src.tracking.energy_tracker import (
     EnergyTracker,
     EnergySnapshot,
     aggregate_snapshots,

@@ -25,8 +25,8 @@ from io import BytesIO
 from typing import Iterator, Callable
 from PIL import Image
 
-from config import DatasetSpec, ALL_DATASETS
-from schema import UnifiedSample
+from src.config import DatasetSpec, ALL_DATASETS
+from src.data.schema import UnifiedSample
 
 
 # ---- Helper chargement streaming ou non -----------------------------------

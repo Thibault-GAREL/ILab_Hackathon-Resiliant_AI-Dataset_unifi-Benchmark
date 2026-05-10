@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data — conserver l'arborescence, exclure les fichiers volumineux
+data/1-raw/*
+data/2-processed/*
+data/3-external/*
+!data/1-raw/.gitkeep
+!data/2-processed/.gitkeep
+!data/3-external/.gitkeep
+data/unified/
+
+# Outputs
+outputs/
+results/runs/
+reports/
+!results/runs/.gitkeep
+!reports/.gitkeep
+
+# Le registry est append-only et constitue une source de vérité partagée :
+# on le commit volontairement (à arbitrer si l'équipe veut le contraire).
+!results/registry.csv
+
+# MLflow / CodeCarbon
+mlruns/
+.mlflow/
+emissions.csv
+
+# Environnement
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log

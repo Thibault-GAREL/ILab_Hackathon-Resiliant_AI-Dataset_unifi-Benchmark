@@ -29,3 +29,4 @@ psutil>=5.9               # CPU / RAM stats pour codecarbon + registry
 tqdm>=4.66
 pydantic>=2.5
 python-Levenshtein>=0.25  # ANLS pour DocVQA
+PyYAML>=6.0               # Lecture configs/models.yaml par scripts/bench_all.py

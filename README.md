@@ -2,9 +2,9 @@
 
 Code partagé de l'équipe. Trois responsabilités :
 
-1. **Dataset unifié** (12 sources → 1 repo HuggingFace) — `build_dataset.py`
-2. **Benchmark interne** (10% du dataset, par-source, métrique adaptée) — `eval_loop.py`
-3. **Tracking énergie + traçabilité** (CodeCarbon + registry CSV) — `energy_tracker.py` + `run_registry.py`
+1. **Dataset unifié** (12 sources → 1 repo HuggingFace) — `scripts/build_dataset.py`
+2. **Benchmark interne** (10% du dataset, par-source, métrique adaptée) — `scripts/eval_loop.py`
+3. **Tracking énergie + traçabilité** (CodeCarbon + registry CSV) — `src/tracking/`
 
 > Le code cible Gemma 3n E4B → Student E4B-it (config officielle kickoff
 > 27/04). Pour Gemma 4 quand l'API se stabilisera, bumper `transformers` et
@@ -22,33 +22,163 @@ Le ranking PEReN est dominé par l'énergie (CodeCarbon) **après** le seuil
   déterministe seed=42) — itération rapide. Override `--subsample_pct 100`
   pour le full split avant soumission finale.
 - Pas d'évaluation OOD (MMStar/MME/POPE) dans le flow par défaut. Le code
-  reste dans `eval_ood.py` pour usage manuel ponctuel.
+  reste dans `src/validation/eval_ood.py` pour usage manuel ponctuel.
 
-## Installation (Runpod ou local)
+## Architecture du projet
 
-```bash
+```
+.
+├── configs/
+│   └── models.yaml             # Liste des modèles à benchmarker
+│
+├── src/                        # Code métier (importable depuis scripts/)
+│   ├── config.py               # DatasetSpec, ALL_DATASETS, MixConfig
+│   ├── data/
+│   │   ├── schema.py           # UnifiedSample dataclass + hf_features
+│   │   ├── loaders.py          # 12 loaders + UnifiedSample mapping
+│   │   └── mix.py              # build_mix() avec stratégies sqrt/uniform/temperature
+│   ├── validation/
+│   │   ├── benchmark.py        # evaluate_model() + subsample_per_source()
+│   │   ├── metrics.py          # score_sample (VQA/ANLS/MC/CIDEr/Relaxed)
+│   │   └── eval_ood.py         # Usage manuel uniquement (MMStar/MME/POPE)
+│   └── tracking/
+│       ├── energy_tracker.py   # EnergyTracker (CodeCarbon) + KPIs
+│       └── run_registry.py     # RegistryEntry + append_to_registry
+│
+├── scripts/                    # Entrypoints CLI
+│   ├── build_dataset.py        # Build + push du dataset unifié
+│   ├── eval_loop.py            # Benchmark d'un modèle (entrypoint principal)
+│   ├── bench_all.py            # Orchestrateur batch (lit configs/models.yaml)
+│   ├── run_benchmark.py        # Variante historique (préfère eval_loop.py)
+│   ├── validate_dataset.py     # Sanity check post-build
+│   ├── runpod_setup.sh         # Setup d'un pod Runpod (one-shot)
+│   └── runpod_run.sh           # Build dataset sur Runpod
+│
+├── data/                       # Données locales (gitignored)
+│   ├── 1-raw/                  # Données brutes — NEVER modify
+│   ├── 2-processed/            # Données nettoyées
+│   └── 3-external/             # APIs / datasets publics
+│
+├── reports/                    # Rapports JSON par run (gitignored)
+├── results/                    # Registry global + artefacts détaillés
+│   ├── registry.csv            # APPEND-ONLY, 1 ligne / run
+│   └── runs/                   # JSON + CSV détaillés par run
+│
+├── tests/
+├── requirements.txt
+└── README.md
+```
+
+## Installation
+
+### Local (Windows + venv `pytorch_cuda_env`)
+
+```powershell
+& c:\0-Code_py_temp\pytorch_cuda_env\Scripts\Activate.ps1
 pip install -r requirements.txt
-huggingface-cli login   # token écriture pour le push du dataset
+huggingface-cli login
 ```
 
-Dépendances clés ajoutées : `codecarbon>=2.4.0`, `nvidia-ml-py>=12.535`,
-`psutil>=5.9`. Si `codecarbon` est absent, le tracking dégrade
-silencieusement en wall-time-only — utile pour debug local mais à NE
-JAMAIS publier.
-
-## Build du dataset sur Runpod (one-shot)
-
-Le build complet charge VQAv2 (~20 GB), COCO (~20 GB), DocVQA, etc. — **à ne
-pas lancer sur un laptop**. Pod Runpod ≥32 GB RAM, ≥200 GB disque,
-CPU-only OK (moins cher).
+### Sur Runpod (one-shot setup)
 
 ```bash
-cd code/
-export HF_TOKEN=hf_xxxxx        # scope repo.write
-bash runpod_run.sh
+git clone <repo-url> && cd ILab_Resilient_AI_*
+bash scripts/runpod_setup.sh
 ```
 
-Le script enchaîne : `pip install`, login HF, dry-run, build complet, push.
+Le script installe `requirements.txt`, `bitsandbytes`, `autoawq`, login HF, et lance un smoke test oracle.
+
+## Workflow benchmark sur Runpod
+
+### Étape 1 — Lancer un pod
+- **GPU** : A100 40 GB (~1 €/h) ou RTX 4090 24 GB
+- **Disk** : 100 GB minimum (cache HF + dataset stream)
+- **Image** : `runpod/pytorch:2.5.1-py3.11-cuda12.1.1-devel-ubuntu22.04`
+
+### Étape 2 — Setup du pod (une fois)
+
+```bash
+bash scripts/runpod_setup.sh
+```
+
+### Étape 3 — Lister les modèles disponibles
+
+```bash
+python scripts/bench_all.py --list
+```
+
+Sortie :
+```
+LABEL                        EXTRAS         MODEL_PATH
+------------------------------------------------------------------------------------------
+gemma4-e4b-bf16              -              google/gemma-4-E4B-it
+gemma3n-e4b-bf16             -              google/gemma-3n-E4B-it
+gemma4-e4b-bnb4              bitsandbytes   unsloth/gemma-4-E4B-it-bnb-4bit
+gemma4-e4b-bnb4-dyn          bitsandbytes   unsloth/gemma-4-E4B-it-unsloth-bnb-4bit
+gemma4-e4b-awq4              autoawq        cyankiwi/gemma-4-E4B-it-AWQ-4bit
+gemma4-e2b-bf16              -              google/gemma-4-E2B-it
+gemma4-e2b-bnb4              bitsandbytes   unsloth/gemma-4-E2B-it-bnb-4bit
+gemma4-e2b-bnb4-dyn          bitsandbytes   unsloth/gemma-4-E2B-it-unsloth-bnb-4bit
+```
+
+### Étape 4 — Benchmarker
+
+```bash
+# Un seul modèle (recommandé pour itérer)
+python scripts/bench_all.py --label gemma4-e4b-bf16
+
+# Sous-ensemble
+python scripts/bench_all.py --label gemma4-e4b-bf16 --label gemma4-e4b-bnb4
+
+# Tous d'affilée (laisse tourner la nuit)
+python scripts/bench_all.py --all
+
+# Run final avant soumission — full split au lieu de 10%
+python scripts/bench_all.py --all --subsample_pct 100
+
+# Reprendre après un échec sans tout refaire
+python scripts/bench_all.py --all --skip_existing
+```
+
+### Étape 5 — Récupérer les résultats
+
+```bash
+# Depuis ta machine locale :
+scp -r runpod:/workspace/.../results ./results-from-pod/
+scp -r runpod:/workspace/.../reports ./reports-from-pod/
+```
+
+Puis ouvre `results/registry.csv` dans Excel ou pandas pour trier par
+`samples_per_joule` desc.
+
+## Modifier la liste de modèles
+
+Édite [configs/models.yaml](configs/models.yaml). Format :
+
+```yaml
+models:
+  - label: mon-checkpoint-v1     # nom court → registry + reports/<label>.json
+    model_path: user/repo-id     # id HuggingFace OU chemin local
+    notes: "Description courte"
+    extras: bitsandbytes         # optionnel : dépendance pip à installer
+```
+
+⚠️ **Compatibilité formats** :
+- ✅ Safetensors BF16 (Google officiel) — natif transformers
+- ✅ bitsandbytes 4-bit (`*-bnb-4bit`) — `pip install bitsandbytes`
+- ✅ AWQ (`*-AWQ-4bit`) — `pip install autoawq`
+- ❌ GGUF (`bartowski`, `unsloth UD-*`) — nécessite backend `llama-cpp-python` (V2)
+- ❌ MLX — Apple Silicon uniquement
+- ❌ UQFF — runtime `mistral.rs` séparé
+
+## Build du dataset (one-shot, ~20 GB+)
+
+```bash
+cd ILab_Resilient_AI_*
+export HF_TOKEN=hf_xxxxx        # scope repo.write
+bash scripts/runpod_run.sh
+```
+
 Variables d'override (cf. entête `runpod_run.sh`) : `HUB_ID`, `TIER`,
 `STRATEGY`, `TEMPERATURE`, `TRAIN_SIZE`, `MAX_PER_SOURCE`, `MAX_IMAGE_DIM`,
 `OUT_DIR`, `PRIVATE`, `SKIP_INSTALL`.
@@ -56,67 +186,26 @@ Variables d'override (cf. entête `runpod_run.sh`) : `HUB_ID`, `TIER`,
 Hub courant : `ECE-ILAB/resilient-ai-unified` (v0.3, 423k lignes,
 12 sources sqrt-balanced + calibration PTQ 2048 samples).
 
-## Exécution du benchmark — entrypoint `eval_loop.py` (recommandé)
-
-```bash
-# 1. Smoke test (oracle, ~1 min, doit score ~1.0)
-python eval_loop.py \
-    --mode oracle \
-    --dataset_hub In/resilient-ai-unified \
-    --subsample_pct 5 \
-    --run_label smoke-oracle \
-    --out reports/smoke.json
-
-# 2. Baseline Gemma 4 non compressé
-python eval_loop.py \
-    --mode real \
-    --model_path google/gemma-3n-E4B-it \
-    --dataset_hub ECE-ILAB/resilient-ai-unified \
-    --run_label gemma3n-e4b-baseline \
-    --out reports/baseline.json
-
-# 3. Votre checkpoint compressé (ex: Djebril après QAT INT4)
-python eval_loop.py \
-    --mode real \
-    --model_path runs/djebril-qat-int4/final \
-    --dataset_hub ECE-ILAB/resilient-ai-unified \
-    --run_label djebril-qat-int4 \
-    --notes "QAT 4 epochs, calib 2048 samples" \
-    --out reports/djebril-qat-int4.json
-
-# 4. Run final avant soumission — full split
-python eval_loop.py \
-    --mode real \
-    --model_path runs/student-final/final \
-    --dataset_hub ECE-ILAB/resilient-ai-unified \
-    --subsample_pct 100 \
-    --run_label final-full \
-    --out reports/final-full.json
-```
-
-### Outputs générés à chaque run
+## Outputs générés à chaque run
 
 ```
-<out>                                          # rapport JSON principal (résumé + détails)
-results/registry.csv                           # APPEND-ONLY, +1 ligne par run (cf. infra)
+reports/<label>.json                           # rapport JSON principal
+results/registry.csv                           # APPEND-ONLY, +1 ligne / run
 results/runs/<label>_<ts>.json                 # artefact détaillé full
-results/runs/<label>_<ts>_energy.csv           # énergie par-source (1 ligne / source)
-results/runs/<label>_<ts>_summary.txt          # résumé human-readable 1 page
+results/runs/<label>_<ts>_energy.csv           # énergie par-source
+results/runs/<label>_<ts>_summary.txt          # résumé human-readable
 ```
 
 ### Le registry global `results/registry.csv`
 
-C'est notre source de vérité pour comparer toutes les runs. **32 colonnes**
-incluant : `timestamp_iso, run_label, git_commit, model_id, subsample_pct,
-macro_avg, micro_avg, kwh_total, kwh_gpu, kwh_cpu, kwh_ram, co2_g,
-joules_per_sample, samples_per_joule, score_per_kwh, gpu_name, hostname,
-notes, …`
+Source de vérité pour comparer toutes les runs. **32 colonnes** incluant :
+`timestamp_iso, run_label, git_commit, model_id, subsample_pct, macro_avg,
+micro_avg, kwh_total, kwh_gpu, kwh_cpu, kwh_ram, co2_g, joules_per_sample,
+samples_per_joule, score_per_kwh, gpu_name, hostname, notes, …`
 
-Ouvrir directement dans Excel / pandas pour trier par `samples_per_joule`
-desc et identifier les checkpoints les plus efficaces. **Append-only** :
-ne pas le rebuild, on ajoute simplement les nouvelles runs au bout.
+Append-only : ne pas le rebuild, on ajoute simplement les nouvelles runs au bout.
 
-### Args clés `eval_loop.py`
+## Args clés `eval_loop.py`
 
 | Flag | Défaut | Utilité |
 |---|---|---|
@@ -135,30 +224,7 @@ ne pas le rebuild, on ajoute simplement les nouvelles runs au bout.
 | `--registry_csv` | `results/registry.csv` | chemin du registry |
 | `--out` | requis | rapport JSON principal |
 
-## Architecture des modules
-
-```
-eval_loop.py        ← entrypoint principal (CLI)
-   │
-   ├─ benchmark.py        evaluate_model() + subsample_per_source() + adaptateurs
-   │     └─ metrics.py    score_sample() (VQA acc / ANLS / MC / CIDEr / Relaxed)
-   │
-   ├─ energy_tracker.py   EnergyTracker (CodeCarbon) + EnergySnapshot + KPIs
-   │
-   └─ run_registry.py     RegistryEntry + append_to_registry + dump_run_artifacts
-
-build_dataset.py    ← entrypoint dataset (CLI)
-   ├─ config.py           DatasetSpec, ALL_DATASETS, MixConfig
-   ├─ loaders.py          load_source() — 12 loaders + UnifiedSample mapping
-   ├─ mix.py              build_mix() avec stratégies sqrt / uniform / temperature
-   ├─ schema.py           UnifiedSample dataclass + hf_features
-   └─ validate_dataset.py post-build sanity check
-
-eval_ood.py         ← USAGE MANUEL UNIQUEMENT (MMStar/MME/POPE)
-                      n'est plus appelé par eval_loop.py
-```
-
-## Métriques par source (inchangé)
+## Métriques par source
 
 | Source | Métrique | Pourquoi |
 |---|---|---|

@@ -60,7 +60,9 @@ export MAX_IMAGE_DIM="${MAX_IMAGE_DIM:-512}"
 export JPEG_QUALITY="${JPEG_QUALITY:-85}"
 
 # --- Vérifications préalables -----------------------------------------------
-cd "$(dirname "$0")"
+# Script vit dans scripts/ ; on remonte à la racine du projet pour que
+# requirements.txt et data/ soient résolus correctement.
+cd "$(dirname "$0")/.."
 
 if [[ -z "${HF_TOKEN:-}" ]]; then
     echo "ERREUR : HF_TOKEN non défini. Obtenir un token écriture sur"
@@ -118,7 +120,7 @@ print(f'      → scope: {perms[\"role\"]}')
 # --- 3. Dry-run (estimation tailles + poids) --------------------------------
 echo ""
 echo "[3/4] Dry-run : estimation des tailles natives HF et des poids de mix..."
-python3 build_dataset.py \
+python3 scripts/build_dataset.py \
     --tier "$TIER" \
     --strategy "$STRATEGY" \
     --temperature "$TEMPERATURE" \
@@ -150,7 +152,7 @@ if [[ -n "$EVAL_CAP" ]]; then
     BUILD_ARGS+=(--eval_cap "$EVAL_CAP")
 fi
 
-python3 build_dataset.py "${BUILD_ARGS[@]}" "${PUSH_ARGS[@]}"
+python3 scripts/build_dataset.py "${BUILD_ARGS[@]}" "${PUSH_ARGS[@]}"
 
 echo ""
 echo "============================================================================"

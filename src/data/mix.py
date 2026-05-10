@@ -23,9 +23,9 @@ import random
 from collections import defaultdict
 from typing import Iterator
 
-from config import ALL_DATASETS, MixConfig, SplitConfig, MixStrategy
-from loaders import load_source
-from schema import UnifiedSample
+from src.config import ALL_DATASETS, MixConfig, SplitConfig, MixStrategy
+from src.data.loaders import load_source
+from src.data.schema import UnifiedSample
 
 
 # ----------------------------------------------------------------------------
