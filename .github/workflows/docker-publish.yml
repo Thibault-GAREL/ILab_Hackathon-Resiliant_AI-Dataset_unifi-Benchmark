@@ -39,13 +39,17 @@ jobs:
 
     steps:
       # L'image PyTorch + CUDA + llama-cpp-python fait ~10-15 GB. Le runner
-      # ubuntu-latest a ~14 GB libres par défaut sur le disque ROOT, où
-      # BuildKit écrit ses couches intermédiaires (/var/lib/buildkit/...).
-      # `jlumbroso/free-disk-space` libère ~35 GB directement sur ce disque
-      # en supprimant Android SDK, .NET, Haskell, CodeQL, large-packages, etc.
-      # (plus efficace que easimon/maximize-build-space qui crée un volume
-      # sur /mnt non utilisé par BuildKit par défaut).
-      - name: Free Disk Space (Aggressive)
+      # ubuntu-latest a ~14 GB libres sur / par défaut. Stratégie en 2 temps :
+      #
+      #   1. jlumbroso/free-disk-space libère ~35 GB sur / (Android SDK, .NET,
+      #      Haskell, tool-cache, etc.)
+      #   2. Déplacer /var/lib/docker vers /mnt (SSD séparé, ~75 GB libres)
+      #      pour que Docker daemon ait largement la place pour les blobs
+      #      pull + couches intermédiaires + tmp BuildKit.
+      #
+      # Sans le step 2, "no space left on device" plante au pull de l'image
+      # base PyTorch (write /var/lib/docker/tmp/GetImageBlob...).
+      - name: Free disk space (aggressive)
         uses: jlumbroso/free-disk-space@main
         with:
           tool-cache: true
@@ -56,13 +60,24 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: Disk space after cleanup
+      - name: Move Docker data root to /mnt
         run: |
-          echo "## Disk space after cleanup ##"
+          sudo systemctl stop docker
+          sudo mv /var/lib/docker /mnt/docker
+          sudo ln -s /mnt/docker /var/lib/docker
+          sudo systemctl start docker
+          # Vérifie que Docker a bien démarré et utilise le nouveau path.
+          docker info | grep -E "Docker Root Dir|Storage Driver"
+
+      - name: Disk space after setup
+        run: |
+          echo "## Disk space after cleanup + Docker move ##"
           df -h
           echo ""
-          echo "## Free space on / (used by BuildKit) ##"
-          df -h / | tail -1 | awk '{print "Available: "$4}'
+          echo "## Available on / (system) ##"
+          df -h / | tail -1 | awk '{print "  Available: "$4}'
+          echo "## Available on /mnt (where /var/lib/docker now lives) ##"
+          df -h /mnt | tail -1 | awk '{print "  Available: "$4}'
 
       - name: Checkout
         uses: actions/checkout@v4
