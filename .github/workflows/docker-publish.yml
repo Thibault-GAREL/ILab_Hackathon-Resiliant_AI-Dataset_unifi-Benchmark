@@ -38,20 +38,31 @@ jobs:
       packages: write
 
     steps:
-      # L'image PyTorch + CUDA + llama-cpp-python fait ~10 GB. Le runner par
-      # défaut a ~14 GB libres → on libère ~30 GB en supprimant les outils
-      # pré-installés inutiles (Android SDK, .NET, etc.) pour éviter "no space
-      # left on device" pendant le build.
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
+      # L'image PyTorch + CUDA + llama-cpp-python fait ~10-15 GB. Le runner
+      # ubuntu-latest a ~14 GB libres par défaut sur le disque ROOT, où
+      # BuildKit écrit ses couches intermédiaires (/var/lib/buildkit/...).
+      # `jlumbroso/free-disk-space` libère ~35 GB directement sur ce disque
+      # en supprimant Android SDK, .NET, Haskell, CodeQL, large-packages, etc.
+      # (plus efficace que easimon/maximize-build-space qui crée un volume
+      # sur /mnt non utilisé par BuildKit par défaut).
+      - name: Free Disk Space (Aggressive)
+        uses: jlumbroso/free-disk-space@main
         with:
-          root-reserve-mb: 4096
-          swap-size-mb: 1024
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Disk space after cleanup
+        run: |
+          echo "## Disk space after cleanup ##"
+          df -h
+          echo ""
+          echo "## Free space on / (used by BuildKit) ##"
+          df -h / | tail -1 | awk '{print "Available: "$4}'
 
       - name: Checkout
         uses: actions/checkout@v4
