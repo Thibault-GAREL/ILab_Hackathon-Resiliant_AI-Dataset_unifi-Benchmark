@@ -79,7 +79,39 @@ pip install -r requirements.txt
 huggingface-cli login
 ```
 
-### Sur Runpod (one-shot setup)
+### Sur Runpod — option A : Docker (recommandée, reproductible)
+
+L'image embarque PyTorch + CUDA 12.1 + transformers + bitsandbytes + autoawq +
+llama-cpp-python (CUDA wheel pré-compilé). Volumes pour persister cache HF et
+résultats.
+
+```powershell
+# 1) Build local + push sur Docker Hub (à faire une fois) :
+docker build -t <ton-user>/resilient-ai:latest .
+docker push <ton-user>/resilient-ai:latest
+
+# 2) Sur Runpod :
+#    Deploy a Pod → Custom Template → Container image: <ton-user>/resilient-ai:latest
+#    Volume mount: /cache/huggingface (10-30 GB pour cache modèles)
+#    Volume mount: /app/results (~1 GB pour registry + artefacts)
+#    Env: HF_TOKEN=hf_xxx
+#
+#    Au démarrage, le container exécute "python scripts/bench_all.py --list".
+#    Override la commande avec :
+#      python scripts/bench_all.py --label gemma3n-e4b-bf16
+#      python scripts/bench_all.py --all --skip_existing
+```
+
+Pour itérer en local sur la GTX 1660 Ti (6 GB VRAM, donc forcément modèle
+quantifié) :
+
+```powershell
+$env:HF_TOKEN = "hf_xxx"
+docker compose build
+docker compose run --rm bench python scripts/bench_all.py --label gemma4-e2b-bnb4
+```
+
+### Sur Runpod — option B : sans Docker (pip install à chaque pod)
 
 ```bash
 git clone <repo-url> && cd ILab_Resilient_AI_*
@@ -93,9 +125,10 @@ Le script installe `requirements.txt`, `bitsandbytes`, `autoawq`, login HF, et l
 ### Étape 1 — Lancer un pod
 - **GPU** : A100 40 GB (~1 €/h) ou RTX 4090 24 GB
 - **Disk** : 100 GB minimum (cache HF + dataset stream)
-- **Image** : `runpod/pytorch:2.5.1-py3.11-cuda12.1.1-devel-ubuntu22.04`
+- **Image** : `<ton-user>/resilient-ai:latest` (option A) ou
+  `runpod/pytorch:2.5.1-py3.11-cuda12.1.1-devel-ubuntu22.04` (option B)
 
-### Étape 2 — Setup du pod (une fois)
+### Étape 2 — Setup du pod (option B uniquement)
 
 ```bash
 bash scripts/runpod_setup.sh

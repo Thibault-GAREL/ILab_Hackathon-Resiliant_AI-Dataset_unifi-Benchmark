@@ -1,0 +1,53 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Données et outputs — JAMAIS dans l'image
+# (montés via volumes au runtime)
+data/1-raw/
+data/2-processed/
+data/3-external/
+data/unified/
+results/
+reports/
+outputs/
+mlruns/
+emissions.csv
+
+# Logs
+*.log
+
+# Notebooks
+.ipynb_checkpoints/
+tests/notebooks/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docker (évite récursion)
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Doc qui pèse / inutile au runtime
+README.md
+LICENSE
+assets/

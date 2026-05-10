@@ -1,0 +1,46 @@
+# =============================================================================
+# docker-compose.yml — usage LOCAL uniquement (Windows + GTX 1660 Ti).
+# Sur Runpod, on n'utilise pas compose : on déploie l'image directement
+# (cf. README.md "Workflow Docker / Runpod").
+#
+# Usage :
+#   # Build une fois :
+#   docker compose build
+#
+#   # Lister les modèles dispo :
+#   docker compose run --rm bench python scripts/bench_all.py --list
+#
+#   # Smoke test oracle (pas de modèle réel chargé) :
+#   docker compose run --rm bench python scripts/eval_loop.py \
+#       --mode oracle --dataset_hub ECE-ILAB/resilient-ai-unified \
+#       --subsample_pct 1 --limit_per_source 5 \
+#       --run_label smoke --no_energy_tracking --out reports/smoke.json
+#
+#   # Bench un modèle (attention VRAM 6GB sur 1660 Ti — préférer un modèle
+#   # bnb-4bit ou Gemma E2B sur cette config) :
+#   docker compose run --rm bench python scripts/bench_all.py \
+#       --label gemma4-e2b-bnb4
+# =============================================================================
+services:
+  bench:
+    build: .
+    image: resilient-ai:latest
+    environment:
+      - HF_TOKEN=${HF_TOKEN:?HF_TOKEN required, export it before docker compose}
+      - HF_HOME=/cache/huggingface
+    volumes:
+      # Cache HF persistant (évite de re-télécharger 15GB à chaque restart)
+      - hf-cache:/cache/huggingface
+      # Registry + artefacts persistants
+      - ./results:/app/results
+      - ./reports:/app/reports
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  hf-cache:
