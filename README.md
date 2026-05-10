@@ -79,28 +79,51 @@ pip install -r requirements.txt
 huggingface-cli login
 ```
 
-### Sur Runpod — option A : Docker (recommandée, reproductible)
+### Sur Runpod — option A : Docker via GitHub Actions (recommandée, sans build local)
 
-L'image embarque PyTorch + CUDA 12.1 + transformers + bitsandbytes + autoawq +
-llama-cpp-python (CUDA wheel pré-compilé). Volumes pour persister cache HF et
-résultats.
+Le workflow [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml)
+build l'image Docker dans le cloud GitHub à chaque push sur `main` et la
+publie sur **GitHub Container Registry** (GHCR). Tu n'as donc rien à builder
+localement.
+
+**Première mise en place** (une fois) :
 
 ```powershell
-# 1) Build local + push sur Docker Hub (à faire une fois) :
-docker build -t <ton-user>/resilient-ai:latest .
-docker push <ton-user>/resilient-ai:latest
+# 1) Créer le repo GitHub (via gh CLI ou via le site web)
+gh repo create resilient-ai --public --source=. --remote=origin --push
 
-# 2) Sur Runpod :
-#    Deploy a Pod → Custom Template → Container image: <ton-user>/resilient-ai:latest
-#    Volume mount: /cache/huggingface (10-30 GB pour cache modèles)
-#    Volume mount: /app/results (~1 GB pour registry + artefacts)
-#    Env: HF_TOKEN=hf_xxx
-#
-#    Au démarrage, le container exécute "python scripts/bench_all.py --list".
-#    Override la commande avec :
-#      python scripts/bench_all.py --label gemma3n-e4b-bf16
-#      python scripts/bench_all.py --all --skip_existing
+# 2) Le workflow se déclenche automatiquement après le push.
+#    Suis-le dans l'onglet "Actions" du repo GitHub.
+#    Build initial : 30-45 min (download PyTorch + llama-cpp-python wheel).
+#    Builds suivants : 3-5 min grâce au cache.
+
+# 3) Une fois le 1er build terminé, va sur :
+#      https://github.com/<user>?tab=packages
+#    Clique sur le package "resilient-ai" → "Package settings" →
+#    "Change visibility" → Public.
+#    Sinon Runpod ne pourra pas le pull sans authentification.
 ```
+
+**Sur Runpod** :
+```
+Deploy a Pod → Custom Template
+  Container image: ghcr.io/<user>/resilient-ai:latest
+  Volume mount  : /cache/huggingface  (30 GB, persiste les modèles téléchargés)
+  Volume mount  : /app/results        (1 GB, registry + artefacts)
+  Volume mount  : /app/reports        (1 GB, rapports JSON)
+  Env           : HF_TOKEN=hf_xxxxx
+```
+
+Au démarrage, le container exécute `python scripts/bench_all.py --list`.
+Override la commande dans le template, ou en SSH :
+
+```bash
+python scripts/bench_all.py --label gemma3n-e4b-bf16
+python scripts/bench_all.py --all --skip_existing
+```
+
+**Trigger manuel d'un rebuild** (sans nouveau commit) : onglet Actions
+du repo → "Build and Push Docker Image" → "Run workflow".
 
 Pour itérer en local sur la GTX 1660 Ti (6 GB VRAM, donc forcément modèle
 quantifié) :
