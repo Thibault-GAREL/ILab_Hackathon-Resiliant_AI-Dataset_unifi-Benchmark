@@ -13,7 +13,9 @@
 defaults:
   dataset_hub: ECE-ILAB/resilient-ai-unified
   subsample_pct: 10        # 100 = full split (run final avant soumission)
-  country_iso: USA         # FRA si pod europe
+  country_iso: CZE         # data center Runpod EU-CZ-1 (Czech Republic)
+                           # → CodeCarbon utilise le mix électrique tchèque
+                           #   pour calculer les émissions CO2 du run
   split: test
   device: cuda
   max_new_tokens: 32
