@@ -89,13 +89,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Génère automatiquement les tags + lowercase le nom du repo (GHCR
-      # n'accepte que des noms en minuscules).
+      # Login Docker Hub. Requiert les secrets DOCKERHUB_USERNAME et
+      # DOCKERHUB_TOKEN configurés dans Settings → Secrets and variables →
+      # Actions du repo. Le token doit avoir au minimum le scope Read & Write.
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Génère automatiquement les tags pour les DEUX registries.
+      # Les noms sont lowercase forcés (GHCR + Docker Hub l'exigent).
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
           tags: |
             type=ref,event=branch
             type=sha,prefix=,format=short
@@ -120,14 +131,24 @@ jobs:
 
       - name: Image summary
         run: |
-          echo "## Image publiée" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Tags poussés sur GHCR :" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Pour Runpod, utiliser :" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "ghcr.io/${{ github.repository_owner }}/$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]'):latest" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          REPO_LOWER=$(echo ${{ github.event.repository.name }} | tr '[:upper:]' '[:lower:]')
+          {
+            echo "## Image publiée sur 2 registries"
+            echo ""
+            echo "Tous les tags poussés :"
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo ""
+            echo "### URLs Runpod-ready"
+            echo ""
+            echo "**GitHub Container Registry** (illimité, public) :"
+            echo '```'
+            echo "ghcr.io/${{ github.repository_owner }}/${REPO_LOWER}:latest"
+            echo '```'
+            echo ""
+            echo "**Docker Hub** (limite 200 pulls/6h pour anonymes) :"
+            echo '```'
+            echo "${{ secrets.DOCKERHUB_USERNAME }}/${REPO_LOWER}:latest"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
