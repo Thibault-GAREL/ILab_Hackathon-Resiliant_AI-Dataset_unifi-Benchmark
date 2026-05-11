@@ -62,10 +62,8 @@ models:
     extras: autoawq
     notes: "AWQ INT8 cyankiwi — moins agressif, qualité meilleure attendue"
 
-  - label: gemma4-e4b-awq-autoround
-    model_path: Vishva007/gemma-4-E4B-it-W4A16-AutoRound-AWQ
-    extras: autoawq
-    notes: "AWQ W4A16 AutoRound — variante mixed-precision"
+  # Vishva007/gemma-4-E4B-it-W4A16-AutoRound-AWQ retiré le 2026-05-11 :
+  # config.json incomplet sur HF (model_type manquant) → ValueError au load.
 
   # =========================================================================
   # Backend llama_cpp — GGUF (bartowski + unsloth Dynamic UD-*)

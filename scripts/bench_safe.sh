@@ -64,7 +64,8 @@ MODELS=(
     "Chunity/gemma-4-E4B-it-AWQ-4bit:gemma4-e4b-awq-chunity"
     "cyankiwi/gemma-4-E4B-it-AWQ-INT4:gemma4-e4b-awq-cyankiwi-int4"
     "cyankiwi/gemma-4-E4B-it-AWQ-INT8:gemma4-e4b-awq-cyankiwi-int8"
-    "Vishva007/gemma-4-E4B-it-W4A16-AutoRound-AWQ:gemma4-e4b-awq-autoround"
+    # Vishva007/gemma-4-E4B-it-W4A16-AutoRound-AWQ retiré : config.json
+    # incomplet sur HF (model_type manquant) → plante au from_pretrained.
 )
 
 cd "$(dirname "$0")/.."   # racine du projet (parent de scripts/)

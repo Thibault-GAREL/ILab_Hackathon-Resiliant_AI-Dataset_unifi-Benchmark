@@ -30,3 +30,7 @@ tqdm>=4.66
 pydantic>=2.5
 python-Levenshtein>=0.25  # ANLS pour DocVQA
 PyYAML>=6.0               # Lecture configs/models.yaml par scripts/bench_all.py
+
+# Quantizers transformers utilises par les modeles AWQ du benchmark
+gptqmodel                 # Chunity/gemma-4-E4B-it-AWQ-4bit
+compressed-tensors        # cyankiwi/gemma-4-E4B-it-AWQ-INT4|INT8
