@@ -2,11 +2,18 @@
 # Pinné pour Runpod (A100 40GB / RTX 4090 24GB)
 # Aligné sur les versions du document méthode (Resilience_IA_Distillation.pdf, §VI.2)
 
-torch>=2.2.0
+# torch est fourni par l'image base (pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime)
+# → ne PAS le réinstaller via pip pour éviter le mismatch avec torchvision.
+# torchvision : épinglé pour matcher torch 2.5.1 (sinon erreur
+# "operator torchvision::nms does not exist" au runtime).
+torch==2.5.1
+torchvision==0.20.1
 transformers>=4.44.0      # Gemma 3n natif (Gemma 4 : bumper la version au moment du kickoff)
 accelerate>=0.30.0
 peft>=0.10.0
-bitsandbytes>=0.43.0
+# bitsandbytes laisse libre : on s'en sert plus pour bnb-4bit (retiré du YAML,
+# bug FP4 Gemma 4) mais on garde l'install au cas où.
+bitsandbytes>=0.43.0,<0.50.0
 datasets>=2.20.0
 huggingface_hub>=0.24.0
 
