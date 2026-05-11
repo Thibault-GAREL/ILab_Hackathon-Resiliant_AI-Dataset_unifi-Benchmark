@@ -35,11 +35,14 @@ ENV HF_HOME=/cache/huggingface \
 # git : nécessaire pour re-pull le code à chaque restart du pod (le code dans
 #       /app est dans le container ephemere, contrairement à /workspace qui
 #       persiste — cf. README section "Reprise rapide").
-# Pas besoin de build-essential/cmake : on installe le wheel CUDA pré-compilé
-# de llama-cpp-python.
+# build-essential + gcc : nécessaires pour pip install gptqmodel (compile
+#       pypcre depuis les sources). Sans ça, "FileNotFoundError: 'gcc'".
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         git \
+        gcc \
+        g++ \
+        build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
