@@ -67,7 +67,6 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
         sys.executable, str(EVAL_LOOP),
         "--mode", "real",
         "--backend", backend,
-        "--dataset_hub", args.dataset_hub or defaults["dataset_hub"],
         "--split", args.split or defaults["split"],
         "--subsample_pct", str(args.subsample_pct or defaults["subsample_pct"]),
         "--country_iso", args.country_iso or defaults["country_iso"],
@@ -77,6 +76,16 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
         "--notes", model.get("notes", ""),
         "--out", str(out_path),
     ]
+
+    # Dataset : local (chemin disque) prioritaire sur hub HF si fourni
+    if args.dataset_local:
+        cmd += ["--dataset_local", args.dataset_local]
+    else:
+        cmd += ["--dataset_hub", args.dataset_hub or defaults["dataset_hub"]]
+
+    # Cap dur du nombre de samples par source (smoke test / itération rapide)
+    if args.limit_per_source is not None:
+        cmd += ["--limit_per_source", str(args.limit_per_source)]
 
     if backend == "llama_cpp":
         cmd += [
@@ -97,6 +106,33 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
     return cmd
 
 
+def _cleanup_model_cache(model: dict) -> None:
+    """Supprime le cache HF du modèle (libère 5-15 GB) pour permettre au
+    suivant de tenir dans la quota disque. Cherche dans HF_HOME (override
+    env) puis dans le défaut HuggingFace.
+    """
+    import os
+    import shutil
+
+    repos: list[str] = []
+    if model.get("backend") == "llama_cpp":
+        repos.append(model["gguf_repo"])
+        if model.get("mmproj_repo") and model["mmproj_repo"] != model["gguf_repo"]:
+            repos.append(model["mmproj_repo"])
+    else:
+        repos.append(model["model_path"])
+
+    hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
+    hub_dir = Path(hf_home) / "hub"
+
+    for repo in repos:
+        slug = "models--" + repo.replace("/", "--")
+        path = hub_dir / slug
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+            print(f"   [cleanup] removed {path}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true",
@@ -112,10 +148,20 @@ def main() -> int:
                     help="Affiche les commandes sans les exécuter.")
 
     # Overrides des defaults YAML
-    ap.add_argument("--dataset_hub", default=None)
+    ap.add_argument("--dataset_hub", default=None,
+                    help="Override le dataset HF Hub du YAML.")
+    ap.add_argument("--dataset_local", default=None,
+                    help="Charger un DatasetDict local (save_to_disk). "
+                         "Prioritaire sur --dataset_hub si fourni.")
     ap.add_argument("--split", default=None, choices=["validation", "test", None])
     ap.add_argument("--subsample_pct", type=float, default=None)
+    ap.add_argument("--limit_per_source", type=int, default=None,
+                    help="Cap dur du nombre de samples par source (post-subsample). "
+                         "Utile pour smoke test rapide (~10 min/modèle avec 20).")
     ap.add_argument("--country_iso", default=None)
+    ap.add_argument("--cleanup_cache_after", action="store_true",
+                    help="Supprime le cache HF du modèle après chaque run "
+                         "(libère 5-15 GB pour permettre au suivant de tenir).")
 
     args = ap.parse_args()
 
@@ -176,10 +222,14 @@ def main() -> int:
             print(f"   ✗ ÉCHEC {label} (exit {e.returncode})")
             failures.append((label, e.returncode))
             # On continue avec les autres modèles plutôt que tout arrêter.
-            continue
         except KeyboardInterrupt:
             print("\nInterruption utilisateur — arrêt.")
             return 130
+
+        # Cleanup cache HF du modèle qu'on vient d'évaluer (réussi ou pas)
+        # pour libérer la place avant le suivant.
+        if args.cleanup_cache_after:
+            _cleanup_model_cache(model)
 
     print(f"\n{'═' * 72}")
     if failures:

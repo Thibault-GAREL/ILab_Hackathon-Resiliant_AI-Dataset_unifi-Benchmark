@@ -71,53 +71,67 @@ Le ranking PEReN est dominé par l'énergie (CodeCarbon) **après** le seuil
 
 ## Reprise rapide sur Runpod (après stop du pod)
 
-**État connu au moment de la pause** (2026-05-11) :
-- Pod sur Runpod EU-CZ-1 avec image `ghcr.io/Thibault-GAREL/ilab_hackathon-resiliant_ai-dataset_unifi-benchmark:latest`
-- Dataset à `/workspace/code/data/unified` (DatasetDict, split `test`, 36117 samples)
-- Cache HF redirigé sur `/workspace/hf-cache` (369 TB / quota perso ~80 GB)
-- 2 modèles déjà dans `results/registry.csv` : `gemma4-e4b-bf16` (macro=0.40) et `gemma4-e2b-bf16` (macro=0.36)
-- `bench_safe.sh` orchestrera les 6 modèles restants (quantifiés bnb-4bit + AWQ) après reprise
+**État connu** (2026-05-11) :
+- Pod sur Runpod EU-CZ-1, image `ghcr.io/Thibault-GAREL/ilab_hackathon-resiliant_ai-dataset_unifi-benchmark:latest`
+- Dataset à `/workspace/code/data/unified` (DatasetDict, split `test`, 36 117 samples)
+- Cache HF redirigé sur `/workspace/hf-cache` (Network Volume persistant)
+- 4 modèles déjà dans `results/registry.csv` : 2 BF16 (E4B, E2B) + 2 AWQ cyankiwi (INT4, INT8)
+- `bench_safe.sh` est un wrapper qui délègue à `bench_all.py --all --skip_existing`
+- **bnb-4bit retiré** du YAML (bug FP4 transformers+bitsandbytes+Gemma 4 multimodal,
+  non résolu sans patch upstream — AWQ couvre déjà le cas 4-bit)
+
+### Modèles du YAML actuel ([configs/models.yaml](configs/models.yaml))
+
+| Label | Backend | Format |
+|---|---|---|
+| `gemma4-e4b-bf16` | transformers | BF16 (~15 GB) |
+| `gemma4-e2b-bf16` | transformers | BF16 (~8 GB) |
+| `gemma4-e4b-awq-chunity` | transformers | AWQ 4-bit (gptqmodel) |
+| `gemma4-e4b-awq-cyankiwi-int4` | transformers | AWQ INT4 (compressed-tensors) |
+| `gemma4-e4b-awq-cyankiwi-int8` | transformers | AWQ INT8 (compressed-tensors) |
+| `gemma4-e4b-gguf-q8` | llama_cpp | GGUF Q8_0 (~8 GB) |
+| `gemma4-e4b-gguf-q6km` | llama_cpp | GGUF Q6_K (~6 GB) |
+| `gemma4-e4b-gguf-q4km` | llama_cpp | GGUF Q4_K_M (~5 GB) |
+| `gemma4-e4b-gguf-iq4nl` | llama_cpp | GGUF IQ4_NL (~5 GB, imatrix non-linear) |
+| `gemma4-e2b-gguf-q4km` | llama_cpp | GGUF E2B Q4_K_M (~3 GB) |
 
 ### Étape 1 — Démarre le pod sur Runpod
 
 `Pods → ton pod arrêté → Start`. Le volume `/workspace` et le cache HF sont préservés.
 
-### Étape 2 — Reconnecte en SSH et restore l'environnement
+### Étape 2 — Reconnecte en SSH et installe les deps manquantes
 
 ```bash
-# Le HF_HOME est déjà persisté dans ~/.bashrc, mais re-source au cas où
-source ~/.bashrc
-echo "HF_HOME=$HF_HOME"   # doit afficher /workspace/hf-cache
-
-# Vérifie que tu es bien loggé HF (le token est dans /workspace/hf-cache/stored_tokens)
-hf auth whoami
-
-# Si git pas installé sur cette session :
+# Si git pas installé sur cette session (sera persistant à partir du prochain rebuild Docker)
 apt-get update -qq && apt-get install -y -qq git
+
+# Login HF déjà persisté dans /workspace/hf-cache/stored_tokens, mais re-export au cas où :
+export HF_HOME=/workspace/hf-cache
+hf auth whoami   # doit afficher Thibault-GAREL
+
+# Deps Python pour AWQ (le rebuild Docker GHCR finira par les inclure)
+pip install -q -U bitsandbytes gptqmodel compressed-tensors 2>/dev/null || true
 ```
 
-### Étape 3 — Pull le code à jour
-
-Le repo `/tmp/repo` est éphémère (perdu au stop). Re-clone et propage les patches :
+### Étape 3 — Pull le code à jour depuis GitHub
 
 ```bash
 rm -rf /tmp/repo
 git clone --depth 1 https://github.com/Thibault-GAREL/ILab_Hackathon-Resiliant_AI-Dataset_unifi-Benchmark.git /tmp/repo
 
-# Copie les fichiers patchés (benchmark.py, eval_loop.py, models.yaml, bench_safe.sh)
+# Synchronise les fichiers patchés
 cp /tmp/repo/src/validation/benchmark.py /app/src/validation/benchmark.py
 cp /tmp/repo/scripts/eval_loop.py        /app/scripts/eval_loop.py
-cp /tmp/repo/configs/models.yaml         /app/configs/models.yaml
+cp /tmp/repo/scripts/bench_all.py        /app/scripts/bench_all.py
 cp /tmp/repo/scripts/bench_safe.sh       /app/scripts/bench_safe.sh
+cp /tmp/repo/configs/models.yaml         /app/configs/models.yaml
 chmod +x /app/scripts/bench_safe.sh
 
-# Vérifications rapides
-grep "Answer in as few words" /app/src/validation/benchmark.py   # fix prompt
-grep "is_4bit" /app/scripts/eval_loop.py                          # fix FP4
-python -m py_compile /app/scripts/eval_loop.py && echo "✅ compile OK"
+# Sanity check
+python -c "import yaml; print(len(yaml.safe_load(open('/app/configs/models.yaml'))['models']), 'modèles dans le YAML')"
 ```
 
-### Étape 4 — Lance le batch (~40-60 min, ~0.30 €)
+### Étape 4 — Lance le batch
 
 ```bash
 cd /app
@@ -126,23 +140,39 @@ disown
 tail -f /workspace/bench.log
 ```
 
-Le script `bench_safe.sh` :
-- skip les modèles déjà fait (presence de `reports/<label>.json`)
-- cleanup le cache HF immédiatement après chaque modèle (libère ~10 GB)
-- safety check : abort si moins de 20 GB libres sur `/workspace`
-- continue même si un modèle échoue (download / runtime)
+`bench_safe.sh` se charge de :
+- Forcer `HF_HOME` vers `/workspace/hf-cache` (sinon `/cache/huggingface` sature à 5 GB)
+- Symlink `/app/results` et `/app/reports` vers `/workspace` (persistance)
+- Appeler `bench_all.py --all --skip_existing --cleanup_cache_after --limit_per_source 20 --dataset_local /workspace/code/data/unified --country_iso CZE`
 
-### Étape 5 — Récupère le registry sur ton PC
+`bench_all.py` se charge de :
+- Lire `configs/models.yaml` et dispatcher entre les backends transformers / llama_cpp
+- Skipper les modèles dont `reports/<label>.json` existe déjà
+- Cleanup le cache HF après chaque modèle (libère 5-15 GB pour le suivant)
+- Continuer si un modèle échoue (download / runtime)
+
+### Options pour ajuster
+
+```bash
+# Smoke test rapide : 5 samples / source = ~2 min par modèle
+LIMIT=5 bash scripts/bench_safe.sh
+
+# Run final avant soumission : full split (pas de limit_per_source)
+LIMIT='' bash scripts/bench_safe.sh
+```
+
+### Étape 5 — Récupère les résultats sur ton PC
 
 ```bash
 # Sur le pod
-runpodctl send /app/results/registry.csv
+runpodctl send /workspace/results/registry.csv
 # Affiche un code style "1234-galileo-thunder"
 ```
 
 ```powershell
-# Sur ton PC (PowerShell)
-runpodctl receive 1234-galileo-thunder
+# Sur ton PC Windows (PowerShell) — installe runpodctl si pas déjà fait :
+Invoke-WebRequest -Uri "https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-windows-amd64.exe" -OutFile "runpodctl.exe"
+.\runpodctl.exe receive 1234-galileo-thunder
 ```
 
 ### Étape 6 — Stop le pod (économie)
@@ -250,7 +280,6 @@ Sortie :
 LABEL                        EXTRAS         MODEL_PATH
 ------------------------------------------------------------------------------------------
 gemma4-e4b-bf16              -              google/gemma-4-E4B-it
-gemma3n-e4b-bf16             -              google/gemma-3n-E4B-it
 gemma4-e4b-bnb4              bitsandbytes   unsloth/gemma-4-E4B-it-bnb-4bit
 gemma4-e4b-bnb4-dyn          bitsandbytes   unsloth/gemma-4-E4B-it-unsloth-bnb-4bit
 gemma4-e4b-awq4              autoawq        cyankiwi/gemma-4-E4B-it-AWQ-4bit
