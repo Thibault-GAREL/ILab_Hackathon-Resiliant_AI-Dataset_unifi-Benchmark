@@ -200,7 +200,7 @@ Au démarrage, le container exécute `python scripts/bench_all.py --list`.
 Override la commande dans le template, ou en SSH :
 
 ```bash
-python scripts/bench_all.py --label gemma3n-e4b-bf16
+python scripts/bench_all.py --label gemma4-e4b-bf16
 python scripts/bench_all.py --all --skip_existing
 ```
 
