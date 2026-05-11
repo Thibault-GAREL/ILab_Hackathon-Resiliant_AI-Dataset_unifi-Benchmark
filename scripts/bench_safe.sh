@@ -20,6 +20,35 @@
 # =============================================================================
 set -u
 
+# ----- Force HF cache vers /workspace (Network Volume persistant) -----------
+# Sinon le cache atterrit sur /cache/huggingface du container ephemere (5 GB
+# max) qui sature au 1er modele. Override SI ET SEULEMENT SI /workspace existe.
+if [ -d /workspace ]; then
+    export HF_HOME=/workspace/hf-cache
+    export HF_HUB_CACHE=/workspace/hf-cache/hub
+    export TRANSFORMERS_CACHE=/workspace/hf-cache
+    mkdir -p /workspace/hf-cache/hub
+    echo "[bench_safe] HF_HOME=$HF_HOME"
+else
+    echo "⚠ /workspace introuvable — HF cache restera sur le container disk."
+fi
+
+# ----- Symlink results/ et reports/ vers /workspace pour persister ----------
+# Sinon un stop/start du pod efface tous les artefacts (registry compris).
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+for d in results reports; do
+    target="/workspace/${d}"
+    local_path="${PROJECT_ROOT}/${d}"
+    if [ -d /workspace ] && [ ! -L "$local_path" ]; then
+        mkdir -p "$target/runs"
+        # Si le dossier local existait (par defaut Dockerfile), on le retire
+        # (rien d'important dedans en debut de session).
+        [ -d "$local_path" ] && rm -rf "$local_path"
+        ln -s "$target" "$local_path"
+        echo "[bench_safe] symlink: $local_path -> $target"
+    fi
+done
+
 DATASET_LOCAL=${DATASET_LOCAL:-/workspace/code/data/unified}
 COUNTRY=${COUNTRY:-CZE}
 LIMIT=${LIMIT:-20}            # samples par source ; 20 = ~240 samples = ~5-10 min/modèle
