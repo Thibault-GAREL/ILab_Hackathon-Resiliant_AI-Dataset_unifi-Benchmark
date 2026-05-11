@@ -31,10 +31,15 @@ ENV HF_HOME=/cache/huggingface \
     HF_HUB_CACHE=/cache/huggingface/hub \
     CODECARBON_LOG_LEVEL=error
 
-# ca-certificates suffit : on n'a pas besoin de build-essential/cmake car on
-# installe le wheel CUDA pré-compilé de llama-cpp-python.
+# ca-certificates : SSL pour HF Hub.
+# git : nécessaire pour re-pull le code à chaque restart du pod (le code dans
+#       /app est dans le container ephemere, contrairement à /workspace qui
+#       persiste — cf. README section "Reprise rapide").
+# Pas besoin de build-essential/cmake : on installe le wheel CUDA pré-compilé
+# de llama-cpp-python.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
+        git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
