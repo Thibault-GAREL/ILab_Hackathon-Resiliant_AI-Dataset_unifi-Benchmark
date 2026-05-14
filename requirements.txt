@@ -41,3 +41,6 @@ PyYAML>=6.0               # Lecture configs/models.yaml par scripts/bench_all.py
 # Quantizers transformers utilises par les modeles AWQ du benchmark
 gptqmodel                 # Chunity/gemma-4-E4B-it-AWQ-4bit
 compressed-tensors        # cyankiwi/gemma-4-E4B-it-AWQ-INT4|INT8
+
+# Backend vLLM
+# Pas pinné ici : installer la wheel vLLM compatible CUDA/Torch du pod avant --backend vllm.

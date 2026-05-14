@@ -71,7 +71,10 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
         "--subsample_pct", str(args.subsample_pct or defaults["subsample_pct"]),
         "--country_iso", args.country_iso or defaults["country_iso"],
         "--device", defaults.get("device", "cuda"),
-        "--max_new_tokens", str(defaults.get("max_new_tokens", 32)),
+        "--max_new_tokens", str(model.get("max_new_tokens", defaults.get("max_new_tokens", 32))),
+        "--temperature", str(model.get("temperature", defaults.get("temperature", 1.0))),
+        "--top_p", str(model.get("top_p", defaults.get("top_p", 0.95))),
+        "--top_k", str(model.get("top_k", defaults.get("top_k", 64))),
         "--run_label", label,
         "--notes", model.get("notes", ""),
         "--out", str(out_path),
@@ -100,6 +103,26 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
                 "--mmproj_repo", model["mmproj_repo"],
                 "--mmproj_filename", model["mmproj_filename"],
             ]
+    elif backend == "vllm":
+        cmd += ["--model_path", model["model_path"]]
+        vllm_map = {
+            "vllm_tensor_parallel_size": "--vllm_tensor_parallel_size",
+            "vllm_max_model_len": "--vllm_max_model_len",
+            "vllm_gpu_memory_utilization": "--vllm_gpu_memory_utilization",
+            "vllm_max_num_seqs": "--vllm_max_num_seqs",
+            "vllm_dtype": "--vllm_dtype",
+            "vllm_quantization": "--vllm_quantization",
+            "vllm_kv_cache_dtype": "--vllm_kv_cache_dtype",
+            "vllm_max_soft_tokens": "--vllm_max_soft_tokens",
+        }
+        for key, flag in vllm_map.items():
+            value = model.get(key, defaults.get(key))
+            if value is not None:
+                cmd += [flag, str(value)]
+        if model.get("vllm_enforce_eager", defaults.get("vllm_enforce_eager", False)):
+            cmd += ["--vllm_enforce_eager"]
+        if model.get("revision"):
+            cmd += ["--revision", model["revision"]]
     else:
         cmd += ["--model_path", model["model_path"]]
 

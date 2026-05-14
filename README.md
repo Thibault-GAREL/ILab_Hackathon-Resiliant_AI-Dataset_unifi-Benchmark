@@ -80,6 +80,35 @@ Le ranking PEReN est dominé par l'énergie (CodeCarbon) **après** le seuil
 - **bnb-4bit retiré** du YAML (bug FP4 transformers+bitsandbytes+Gemma 4 multimodal,
   non résolu sans patch upstream — AWQ couvre déjà le cas 4-bit)
 
+### Backend vLLM
+
+Le benchmark supporte aussi `--backend vllm` pour les repos HF compatibles vLLM.
+C'est le chemin le plus proche de l'évaluation officielle image-to-text.
+
+Exemple rapide :
+
+```bash
+python scripts/eval_loop.py \
+  --mode real \
+  --backend vllm \
+  --model_path google/gemma-4-E4B-it \
+  --dataset_local /workspace/code/data/unified \
+  --split test \
+  --limit_per_source 5 \
+  --subsample_pct 100 \
+  --max_new_tokens 16 \
+  --vllm_max_soft_tokens 140 \
+  --vllm_max_model_len 2048 \
+  --country_iso CZE \
+  --run_label vllm-smoke \
+  --out reports/vllm-smoke.json
+```
+
+Options utiles : `--vllm_quantization fp8`, `--vllm_kv_cache_dtype fp8`,
+`--vllm_gpu_memory_utilization`, `--vllm_tensor_parallel_size`.
+
+Avant de lancer sur RunPod, installer une wheel vLLM compatible CUDA/Torch.
+
 ### Modèles du YAML actuel ([configs/models.yaml](configs/models.yaml))
 
 | Label | Backend | Format |

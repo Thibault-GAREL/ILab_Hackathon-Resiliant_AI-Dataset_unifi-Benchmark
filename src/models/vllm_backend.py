@@ -1,0 +1,111 @@
+
+#Backend vLLM pour les modèles HF compatibles.
+
+from __future__ import annotations
+
+import re
+import time
+from typing import Any, Callable
+
+GenerateFn = Callable[..., str]
+
+
+def _post_process_pred(text: str, task: str) -> str:
+    text = re.sub(r"\*+", "", str(text)).strip()
+    text = text.split("\n", 1)[0].strip()
+    if task == "multiple_choice":
+        match = re.search(r"\b([A-H])\b", text.upper())
+        if match:
+            return match.group(1)
+    return text
+
+
+def _build_prompt(prompt: str | None, sample: dict[str, Any]) -> str:
+    task = sample.get("task") or "vqa"
+    choices = list(sample.get("choices") or [])
+    question = str(prompt or sample.get("question") or "").strip()
+
+    if task == "multiple_choice" and choices:
+        labeled = "\n".join(f"{chr(65 + idx)}. {choice}" for idx, choice in enumerate(choices))
+        return f"{question}\n\n{labeled}\n\nAnswer with ONLY the letter of the correct choice."
+    if task == "captioning":
+        return "Describe this image in one short sentence. No explanation, no markdown."
+    return f"{question}\n\nAnswer in as few words as possible. No explanation, no markdown."
+
+
+def make_vllm_generate_fn(
+    model_path: str,
+    max_new_tokens: int = 32,
+    tensor_parallel_size: int = 1,
+    max_model_len: int = 2048,
+    gpu_memory_utilization: float = 0.90,
+    max_num_seqs: int = 1,
+    dtype: str = "auto",
+    quantization: str | None = None,
+    kv_cache_dtype: str | None = None,
+    max_soft_tokens: int | None = None,
+    temperature: float = 1.0,
+    top_p: float = 0.95,
+    top_k: int = 64,
+    enforce_eager: bool = False,
+    revision: str | None = None,
+) -> GenerateFn:
+    #Charge vLLM et retourne une GenerateFn compatible evaluate_model()
+    try:
+        import vllm
+        from vllm import LLM, SamplingParams
+    except ImportError as exc:
+        raise RuntimeError("vLLM non installé. Installer une wheel compatible CUDA/Torch avant --backend vllm.") from exc
+
+    llm_kwargs: dict[str, Any] = {
+        "model": model_path,
+        "tensor_parallel_size": tensor_parallel_size,
+        "max_model_len": max_model_len,
+        "gpu_memory_utilization": gpu_memory_utilization,
+        "max_num_seqs": max_num_seqs,
+        "limit_mm_per_prompt": {"image": 1},
+        "enforce_eager": enforce_eager,
+    }
+    if dtype != "auto":
+        llm_kwargs["dtype"] = dtype
+    if quantization:
+        llm_kwargs["quantization"] = quantization
+    if kv_cache_dtype:
+        llm_kwargs["kv_cache_dtype"] = kv_cache_dtype
+    if revision:
+        llm_kwargs["revision"] = revision
+
+    print(f"[load vllm] {model_path}")
+    print(f"[vllm kwargs] {llm_kwargs}")
+    load_t0 = time.perf_counter()
+    llm = LLM(**llm_kwargs)
+    print(f"[load vllm] ok en {time.perf_counter() - load_t0:.1f}s (vllm={getattr(vllm, '__version__', 'unknown')})")
+
+    def _gen(image, prompt, sample=None, **kwargs) -> str:
+        sample = sample or {}
+        task = sample.get("task", "vqa")
+        sampling = SamplingParams(
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            max_tokens=max_new_tokens,
+        )
+        mm_processor_kwargs = {"max_soft_tokens": max_soft_tokens} if max_soft_tokens else None
+        conversation = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_pil", "image_pil": image},
+                    {"type": "text", "text": _build_prompt(prompt, sample)},
+                ],
+            }
+        ]
+        outputs = llm.chat(
+            conversation,
+            sampling_params=sampling,
+            mm_processor_kwargs=mm_processor_kwargs,
+        )
+        text = outputs[0].outputs[0].text if outputs else ""
+        return _post_process_pred(text, str(task))
+
+    return _gen

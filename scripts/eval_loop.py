@@ -95,7 +95,30 @@ def _make_generate_fn(args):
     if args.mode == "constant":
         return constant_generate_fn(args.constant_answer), f"constant:{args.constant_answer}"
 
-    # real — route entre les backends transformers et llama-cpp-python
+    # real — dispatch backend
+    if args.backend == "vllm":
+        if not args.model_path:
+            raise SystemExit("--model_path requis en mode real avec backend vllm.")
+        from src.models.vllm_backend import make_vllm_generate_fn
+        gen_fn = make_vllm_generate_fn(
+            model_path=args.model_path,
+            max_new_tokens=args.max_new_tokens,
+            tensor_parallel_size=args.vllm_tensor_parallel_size,
+            max_model_len=args.vllm_max_model_len,
+            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+            max_num_seqs=args.vllm_max_num_seqs,
+            dtype=args.vllm_dtype,
+            quantization=args.vllm_quantization,
+            kv_cache_dtype=args.vllm_kv_cache_dtype,
+            max_soft_tokens=args.vllm_max_soft_tokens,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            top_k=args.top_k,
+            enforce_eager=args.vllm_enforce_eager,
+            revision=args.revision,
+        )
+        return gen_fn, args.model_path
+
     if args.backend == "llama_cpp":
         if not args.gguf_repo or not args.gguf_filename:
             raise SystemExit(
@@ -150,15 +173,24 @@ def main() -> int:
 
     # ----- Modèle ---------------------------------------------------------
     ap.add_argument("--mode", choices=["real", "oracle", "constant"], default="real")
-    ap.add_argument("--backend", choices=["transformers", "llama_cpp"],
+    ap.add_argument("--backend", choices=["transformers", "llama_cpp", "vllm"],
                     default="transformers",
                     help="Backend d'inférence. transformers = HF safetensors / "
-                         "bnb-4bit / AWQ. llama_cpp = GGUF via llama-cpp-python.")
+                         "bnb-4bit / AWQ. llama_cpp = GGUF via llama-cpp-python. "
+                         "vllm = serveur/offline vLLM pour safetensors compatibles.")
     ap.add_argument("--model_path", default=None,
                     help="Repo HF ou chemin local — requis si backend=transformers.")
     ap.add_argument("--constant_answer", default="unknown")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--max_new_tokens", type=int, default=32)
+    ap.add_argument("--temperature", type=float, default=1.0,
+                    help="Sampling temperature, surtout utilisé par vLLM.")
+    ap.add_argument("--top_p", type=float, default=0.95,
+                    help="top_p sampling, surtout utilisé par vLLM.")
+    ap.add_argument("--top_k", type=int, default=64,
+                    help="top_k sampling, surtout utilisé par vLLM.")
+    ap.add_argument("--revision", default=None,
+                    help="Révision HF optionnelle pour les backends qui la supportent.")
 
     # ----- Backend llama-cpp-python (GGUF) -------------------------------
     ap.add_argument("--gguf_repo", default=None,
@@ -178,6 +210,21 @@ def main() -> int:
                          "Override pour fit dans une VRAM limitée.")
     ap.add_argument("--n_ctx", type=int, default=2048,
                     help="Taille du contexte llama.cpp.")
+
+    # ----- Backend vLLM ---------------------------------------------------
+    ap.add_argument("--vllm_tensor_parallel_size", type=int, default=1)
+    ap.add_argument("--vllm_max_model_len", type=int, default=2048)
+    ap.add_argument("--vllm_gpu_memory_utilization", type=float, default=0.90)
+    ap.add_argument("--vllm_max_num_seqs", type=int, default=1)
+    ap.add_argument("--vllm_dtype", default="auto")
+    ap.add_argument("--vllm_quantization", default=None,
+                    help="Ex: fp8, modelopt, awq selon support vLLM.")
+    ap.add_argument("--vllm_kv_cache_dtype", default=None,
+                    help="Ex: fp8 pour KV cache quantifié.")
+    ap.add_argument("--vllm_max_soft_tokens", type=int, default=None,
+                    help="Gemma4 image processor max_soft_tokens via mm_processor_kwargs.")
+    ap.add_argument("--vllm_enforce_eager", action="store_true", default=False)
+    ap.add_argument("--vllm_no_enforce_eager", dest="vllm_enforce_eager", action="store_false")
 
     # ----- Dataset interne ------------------------------------------------
     ap.add_argument("--dataset_local", default=None,
@@ -296,6 +343,22 @@ def main() -> int:
         "model_path": args.model_path,
         "device": args.device,
         "max_new_tokens": args.max_new_tokens,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "top_k": args.top_k,
+        "backend": args.backend,
+        "revision": args.revision,
+        "vllm": {
+            "tensor_parallel_size": args.vllm_tensor_parallel_size,
+            "max_model_len": args.vllm_max_model_len,
+            "gpu_memory_utilization": args.vllm_gpu_memory_utilization,
+            "max_num_seqs": args.vllm_max_num_seqs,
+            "dtype": args.vllm_dtype,
+            "quantization": args.vllm_quantization,
+            "kv_cache_dtype": args.vllm_kv_cache_dtype,
+            "max_soft_tokens": args.vllm_max_soft_tokens,
+            "enforce_eager": args.vllm_enforce_eager,
+        },
         "split": args.split,
         "sources_filter": args.sources,
         "limit_per_source": args.limit_per_source,
