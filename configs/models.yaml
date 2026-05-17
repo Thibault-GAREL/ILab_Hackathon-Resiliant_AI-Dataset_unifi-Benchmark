@@ -4,6 +4,7 @@
 # 2 backends supportés :
 #   - transformers (défaut) : safetensors BF16 / AWQ
 #   - llama_cpp             : GGUF via llama-cpp-python (image Docker fournie)
+#   - vllm                  : safetensors/HF repos via vLLM offline engine
 #
 # `extras` indique une dépendance pip optionnelle à installer sur le pod
 # avant de lancer ce modèle (cf. requirements.txt → autoawq, gptqmodel,
@@ -24,6 +25,15 @@ defaults:
   split: test
   device: cuda
   max_new_tokens: 32
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 64
+  vllm_tensor_parallel_size: 1
+  vllm_max_model_len: 2048
+  vllm_gpu_memory_utilization: 0.90
+  vllm_max_num_seqs: 1
+  vllm_dtype: auto
+  vllm_enforce_eager: false
 
 models:
   # =========================================================================
@@ -54,6 +64,94 @@ models:
     model_path: cyankiwi/gemma-4-E4B-it-AWQ-INT8
     extras: compressed-tensors
     notes: "AWQ INT8 cyankiwi — moins agressif, qualité meilleure attendue"
+
+
+  # =========================================================================
+  # Backend vLLM — grilles runtime classiques
+  #
+  # Testes compatibles vLLM:
+  #   - BF16 : référence qualité/énergie
+  #   - FP8 weights : quantification runtime vLLM
+  #   - FP8 weights + KV FP8 : poids + cache KV
+  #   - soft140 / soft280 : budget tokens visuels Gemma4
+  # =========================================================================
+
+  # ---- E4B : références BF16 ---------------------------------------------
+  - label: gemma4-e4b-vllm-bf16-soft140-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    notes: "vLLM BF16, soft140, t16 : baseline énergie"
+
+  - label: gemma4-e4b-vllm-bf16-soft280-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 280
+    vllm_max_model_len: 2048
+    notes: "vLLM BF16, soft280, t16 : baseline qualité"
+
+  # ---- E4B : FP8 weights --------------------------------------------------
+  - label: gemma4-e4b-vllm-fp8-soft140-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    notes: "vLLM FP8 weights, soft140, t16"
+
+  - label: gemma4-e4b-vllm-fp8-soft280-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 280
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    notes: "vLLM FP8 weights, soft280, t16"
+
+  # ---- E4B : FP8 weights + KV FP8 ----------------------------------------
+  - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    notes: "vLLM FP8 weights + KV FP8, soft140, t16"
+
+  - label: gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 280
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    notes: "vLLM FP8 weights + KV FP8, soft280, t16"
+
+  # ---- E4B : decode plus long --------------------------------------------
+  - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t32
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 32
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    notes: "vLLM FP8 weights + KV FP8, soft140, t32"
+
+  # ---- E2B : borne basse --------------------------------------------------
+  - label: gemma4-e2b-vllm-bf16-soft140-t16
+    backend: vllm
+    model_path: google/gemma-4-E2B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    notes: "vLLM E2B BF16, soft140, t16 : borne basse taille"
 
   # =========================================================================
   # Backend llama_cpp — GGUF (quantifications classiques bartowski imatrix)
