@@ -34,6 +34,25 @@ defaults:
   vllm_max_num_seqs: 1
   vllm_dtype: auto
   vllm_enforce_eager: false
+  vllm_seed: 42
+
+groups:
+  # Smoke vLLM court : contrôle BF16 + candidat runtime.
+  vllm_submission_candidate:
+    - gemma4-e4b-vllm-bf16-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+
+  # Fallback si soft140 degrade trop la qualité visuelle.
+  vllm_submission_fallback:
+    - gemma4-e4b-vllm-bf16-soft280-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
+
+  # Petite grille runtime vLLM.
+  vllm_runtime_grid:
+    - gemma4-e4b-vllm-bf16-soft140-t16
+    - gemma4-e4b-vllm-fp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
 
 models:
   # =========================================================================
@@ -67,97 +86,64 @@ models:
 
 
   # =========================================================================
-  # Backend vLLM — DÉSACTIVÉ (commenté en attendant l'implémentation)
-  #
-  # ⚠️ Le backend vLLM n'est pas encore implémenté côté code :
-  #   - src/models/vllm_backend.py n'existe pas
-  #   - eval_loop.py route uniquement entre transformers et llama_cpp
-  # → Décommenter les modèles ci-dessous UNIQUEMENT après avoir codé le
-  #   backend (vLLM offline LLM engine + multimodal pour Gemma 4).
-  #
-  # Grilles prévues (à activer plus tard) :
-  #   - BF16 : référence qualité/énergie
-  #   - FP8 weights : quantification runtime vLLM
-  #   - FP8 weights + KV FP8 : poids + cache KV
-  #   - soft140 / soft280 : budget tokens visuels Gemma 4
+  # Backend vLLM — smoke + candidat runtime
   # =========================================================================
 
-  # # ---- E4B : références BF16 ---------------------------------------------
-  # - label: gemma4-e4b-vllm-bf16-soft140-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 140
-  #   vllm_max_model_len: 2048
-  #   notes: "vLLM BF16, soft140, t16 : baseline énergie"
-  #
-  # - label: gemma4-e4b-vllm-bf16-soft280-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 280
-  #   vllm_max_model_len: 2048
-  #   notes: "vLLM BF16, soft280, t16 : baseline qualité"
-  #
-  # # ---- E4B : FP8 weights --------------------------------------------------
-  # - label: gemma4-e4b-vllm-fp8-soft140-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 140
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   notes: "vLLM FP8 weights, soft140, t16"
-  #
-  # - label: gemma4-e4b-vllm-fp8-soft280-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 280
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   notes: "vLLM FP8 weights, soft280, t16"
-  #
-  # # ---- E4B : FP8 weights + KV FP8 ----------------------------------------
-  # - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 140
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   vllm_kv_cache_dtype: fp8
-  #   notes: "vLLM FP8 weights + KV FP8, soft140, t16"
-  #
-  # - label: gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 280
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   vllm_kv_cache_dtype: fp8
-  #   notes: "vLLM FP8 weights + KV FP8, soft280, t16"
-  #
-  # # ---- E4B : decode plus long --------------------------------------------
-  # - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t32
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 32
-  #   vllm_max_soft_tokens: 140
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   vllm_kv_cache_dtype: fp8
-  #   notes: "vLLM FP8 weights + KV FP8, soft140, t32"
-  #
-  # # ---- E2B : borne basse --------------------------------------------------
-  # - label: gemma4-e2b-vllm-bf16-soft140-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E2B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 140
-  #   vllm_max_model_len: 2048
-  #   notes: "vLLM E2B BF16, soft140, t16 : borne basse taille"
+  - label: gemma4-e4b-vllm-bf16-soft140-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    notes: "vLLM BF16, soft140, t16 : baseline énergie"
+
+  - label: gemma4-e4b-vllm-bf16-soft280-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 280
+    vllm_max_model_len: 2048
+    notes: "vLLM BF16, soft280, t16 : baseline qualité"
+
+  # ---- E4B : FP8 weights --------------------------------------------------
+  - label: gemma4-e4b-vllm-fp8-soft140-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    notes: "vLLM FP8 weights, soft140, t16"
+
+  - label: gemma4-e4b-vllm-fp8-soft280-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 280
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    notes: "vLLM FP8 weights, soft280, t16"
+
+  # ---- E4B : FP8 weights + KV FP8 ----------------------------------------
+  - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    notes: "CANDIDAT Round 1/2 : vLLM FP8 weights + KV FP8, soft140, t16"
+
+  - label: gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
+    backend: vllm
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 280
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    notes: "vLLM FP8 weights + KV FP8, soft280, t16"
 
   # =========================================================================
   # Backend llama_cpp — GGUF (quantifications classiques bartowski imatrix)

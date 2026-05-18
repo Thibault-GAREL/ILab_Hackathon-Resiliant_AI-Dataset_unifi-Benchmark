@@ -105,9 +105,41 @@ python scripts/eval_loop.py \
 ```
 
 Options utiles : `--vllm_quantization fp8`, `--vllm_kv_cache_dtype fp8`,
-`--vllm_gpu_memory_utilization`, `--vllm_tensor_parallel_size`.
+`--vllm_gpu_memory_utilization`, `--vllm_tensor_parallel_size`, `--vllm_seed`.
 
-Avant de lancer sur RunPod, installer une wheel vLLM compatible CUDA/Torch.
+Installer vLLM sur le pod avant le smoke si la wheel n'est pas déjà présente :
+
+```bash
+pip install -U vllm
+```
+
+Smoke test RunPod recommandé pour vérifier que vLLM marche bout-en-bout :
+
+```bash
+python scripts/eval_loop.py \
+  --mode real \
+  --backend vllm \
+  --model_path google/gemma-4-E4B-it \
+  --dataset_local /workspace/code/data/unified \
+  --split test \
+  --limit_per_source 2 \
+  --subsample_pct 100 \
+  --max_new_tokens 16 \
+  --temperature 1.0 \
+  --top_p 0.95 \
+  --top_k 64 \
+  --vllm_max_soft_tokens 140 \
+  --vllm_max_model_len 2048 \
+  --vllm_gpu_memory_utilization 0.90 \
+  --vllm_quantization fp8 \
+  --vllm_kv_cache_dtype fp8 \
+  --vllm_seed 42 \
+  --country_iso CZE \
+  --run_label vllm-smoke-fp8-kvfp8-soft140 \
+  --out reports/vllm-smoke-fp8-kvfp8-soft140.json
+```
+
+Si ce smoke passe, lancer ensuite le groupe `vllm_submission_candidate`.
 
 ### Modèles du YAML actuel ([configs/models.yaml](configs/models.yaml))
 

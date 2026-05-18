@@ -116,6 +116,7 @@ def _make_generate_fn(args):
             top_k=args.top_k,
             enforce_eager=args.vllm_enforce_eager,
             revision=args.revision,
+            seed=args.vllm_seed,
         )
         return gen_fn, args.model_path
 
@@ -225,6 +226,8 @@ def main() -> int:
                     help="Gemma4 image processor max_soft_tokens via mm_processor_kwargs.")
     ap.add_argument("--vllm_enforce_eager", action="store_true", default=False)
     ap.add_argument("--vllm_no_enforce_eager", dest="vllm_enforce_eager", action="store_false")
+    ap.add_argument("--vllm_seed", type=int, default=42,
+                    help="Seed sampling vLLM quand supporté par la version installée.")
 
     # ----- Dataset interne ------------------------------------------------
     ap.add_argument("--dataset_local", default=None,
@@ -358,6 +361,7 @@ def main() -> int:
             "kv_cache_dtype": args.vllm_kv_cache_dtype,
             "max_soft_tokens": args.vllm_max_soft_tokens,
             "enforce_eager": args.vllm_enforce_eager,
+            "seed": args.vllm_seed,
         },
         "split": args.split,
         "sources_filter": args.sources,

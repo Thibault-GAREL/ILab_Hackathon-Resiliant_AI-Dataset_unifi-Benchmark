@@ -1,10 +1,10 @@
-
-#Backend vLLM pour les modèles HF compatibles.
+"""Backend vLLM pour les modèles HF compatibles."""
 
 from __future__ import annotations
 
 import re
 import time
+from inspect import signature
 from typing import Any, Callable
 
 GenerateFn = Callable[..., str]
@@ -49,8 +49,8 @@ def make_vllm_generate_fn(
     top_k: int = 64,
     enforce_eager: bool = False,
     revision: str | None = None,
+    seed: int | None = 42,
 ) -> GenerateFn:
-    #Charge vLLM et retourne une GenerateFn compatible evaluate_model()
     try:
         import vllm
         from vllm import LLM, SamplingParams
@@ -80,16 +80,20 @@ def make_vllm_generate_fn(
     load_t0 = time.perf_counter()
     llm = LLM(**llm_kwargs)
     print(f"[load vllm] ok en {time.perf_counter() - load_t0:.1f}s (vllm={getattr(vllm, '__version__', 'unknown')})")
+    sampling_fields = set(signature(SamplingParams).parameters)
 
     def _gen(image, prompt, sample=None, **kwargs) -> str:
         sample = sample or {}
         task = sample.get("task", "vqa")
-        sampling = SamplingParams(
-            temperature=temperature,
-            top_p=top_p,
-            top_k=top_k,
-            max_tokens=max_new_tokens,
-        )
+        sampling_kwargs: dict[str, Any] = {
+            "temperature": temperature,
+            "top_p": top_p,
+            "top_k": top_k,
+            "max_tokens": max_new_tokens,
+        }
+        if seed is not None and "seed" in sampling_fields:
+            sampling_kwargs["seed"] = seed
+        sampling = SamplingParams(**sampling_kwargs)
         mm_processor_kwargs = {"max_soft_tokens": max_soft_tokens} if max_soft_tokens else None
         conversation = [
             {

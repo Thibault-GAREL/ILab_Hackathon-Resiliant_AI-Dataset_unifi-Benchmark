@@ -17,6 +17,9 @@ Usage (depuis la racine du projet) :
     # Lancer un sous-ensemble par labels
     python scripts/bench_all.py --label gemma4-e4b-bf16 --label gemma4-e4b-bnb4
 
+    # Lancer un groupe YAML (ex: smoke vLLM)
+    python scripts/bench_all.py --group vllm_submission_candidate
+
     # Override du subsample (full split avant soumission)
     python scripts/bench_all.py --all --subsample_pct 100
 
@@ -56,6 +59,15 @@ def _print_model_table(models: list[dict]) -> None:
         else:
             model_str = m["model_path"]
         print(f"{m['label']:<28} {backend:<11} {extras:<14} {model_str}")
+
+
+def _print_groups(groups: dict[str, list[str]]) -> None:
+    if not groups:
+        return
+    print("\nGROUPS")
+    print("-" * 100)
+    for name, labels in groups.items():
+        print(f"{name:<32} {', '.join(labels)}")
 
 
 def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
@@ -114,6 +126,7 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
             "vllm_quantization": "--vllm_quantization",
             "vllm_kv_cache_dtype": "--vllm_kv_cache_dtype",
             "vllm_max_soft_tokens": "--vllm_max_soft_tokens",
+            "vllm_seed": "--vllm_seed",
         }
         for key, flag in vllm_map.items():
             value = model.get(key, defaults.get(key))
@@ -163,6 +176,9 @@ def main() -> int:
     ap.add_argument("--label", action="append", default=[],
                     help="Lancer uniquement le(s) modèle(s) avec ce label "
                          "(répétable). Mutex avec --all.")
+    ap.add_argument("--group", action="append", default=[],
+                    help="Lancer un groupe défini dans configs/models.yaml "
+                         "(répétable). Mutex avec --all.")
     ap.add_argument("--all", action="store_true",
                     help="Lancer tous les modèles du YAML.")
     ap.add_argument("--skip_existing", action="store_true",
@@ -191,19 +207,21 @@ def main() -> int:
     cfg = load_config()
     models = cfg["models"]
     defaults = cfg["defaults"]
+    groups = cfg.get("groups", {})
 
     if args.list:
         _print_model_table(models)
+        _print_groups(groups)
         return 0
 
-    if not args.all and not args.label:
-        ap.error("--all ou --label requis (ou --list pour voir les options).")
-    if args.all and args.label:
-        ap.error("--all et --label sont mutuellement exclusifs.")
+    if not args.all and not args.label and not args.group:
+        ap.error("--all, --label ou --group requis (ou --list pour voir les options).")
+    if args.all and (args.label or args.group):
+        ap.error("--all est mutuellement exclusif avec --label / --group.")
 
     if args.all:
         selected = models
-    else:
+    elif args.label:
         by_label = {m["label"]: m for m in models}
         unknown = [lab for lab in args.label if lab not in by_label]
         if unknown:
@@ -212,6 +230,24 @@ def main() -> int:
                 f"Utiliser --list pour voir les options disponibles."
             )
         selected = [by_label[lab] for lab in args.label]
+    else:
+        by_label = {m["label"]: m for m in models}
+        unknown_groups = [name for name in args.group if name not in groups]
+        if unknown_groups:
+            raise SystemExit(
+                f"Groupe(s) inconnu(s) : {unknown_groups}. "
+                f"Utiliser --list pour voir les groupes disponibles."
+            )
+        labels: list[str] = []
+        for name in args.group:
+            labels.extend(groups[name])
+        unknown_labels = [lab for lab in labels if lab not in by_label]
+        if unknown_labels:
+            raise SystemExit(
+                f"Label(s) de groupe inconnu(s) : {unknown_labels}. "
+                "Corriger configs/models.yaml."
+            )
+        selected = [by_label[lab] for lab in dict.fromkeys(labels)]
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
