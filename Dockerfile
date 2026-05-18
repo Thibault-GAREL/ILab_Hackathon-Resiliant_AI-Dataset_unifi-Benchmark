@@ -2,41 +2,38 @@
 # Dockerfile — Resilient AI benchmark + dataset build
 # Base : PyTorch 2.5.1 + CUDA 12.1 runtime (compatible RunPod GPU)
 #
-# Build :
-#   docker build -t resilient-ai:latest .
+# Image auto-suffisante : toutes les libs sont installées dans l'image
+# (torch pinné, llama-cpp-python CUDA, gptqmodel, compressed-tensors, autoawq,
+# LD_LIBRARY_PATH résolu via ldconfig, HF_HOME pré-configuré sur /workspace).
+# → Au runtime, AUCUN pip install ni export manuel requis.
 #
-# Run local (avec GPU + cache HF persistant) :
-#   docker run --gpus all \
-#       -v $PWD/results:/app/results \
-#       -v $PWD/reports:/app/reports \
-#       -v hf-cache:/cache/huggingface \
-#       -e HF_TOKEN=hf_xxx \
-#       resilient-ai:latest \
-#       python scripts/bench_all.py --label gemma3n-e4b-bf16
+# Build via GitHub Actions à chaque push (cf. .github/workflows/docker-publish.yml).
+# Image disponible sur : ghcr.io/<user>/<repo>:latest
 #
-# Sur Runpod : push l'image sur Docker Hub puis utilise-la dans un template
-# (cf. README.md section "Workflow Docker / Runpod").
+# Run sur Runpod : utiliser l'image en template, monter /workspace (persistant),
+# l'entrypoint crée /workspace/hf-cache + symlinks /app/{results,reports}.
 # =============================================================================
 FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
 
+# ---- Variables d'env globales -----------------------------------------------
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
-
-# Cache HF redirigé vers un volume montable (évite de saturer le container disk
-# et permet de réutiliser les téléchargements de modèles entre runs)
-ENV HF_HOME=/cache/huggingface \
-    TRANSFORMERS_CACHE=/cache/huggingface \
-    HF_HUB_CACHE=/cache/huggingface/hub \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     CODECARBON_LOG_LEVEL=error
 
-# ca-certificates : SSL pour HF Hub.
-# git : nécessaire pour re-pull le code à chaque restart du pod (le code dans
-#       /app est dans le container ephemere, contrairement à /workspace qui
-#       persiste — cf. README section "Reprise rapide").
-# build-essential + gcc : nécessaires pour pip install gptqmodel (compile
-#       pypcre depuis les sources). Sans ça, "FileNotFoundError: 'gcc'".
+# Cache HF + dossiers de travail sur /workspace (Network Volume Runpod).
+# L'entrypoint.sh créera ces dossiers au runtime (mkdir -p).
+ENV HF_HOME=/workspace/hf-cache \
+    HF_HUB_CACHE=/workspace/hf-cache/hub \
+    TRANSFORMERS_CACHE=/workspace/hf-cache \
+    TMPDIR=/workspace/tmp \
+    PIP_CACHE_DIR=/workspace/pip-cache
+
+# ---- Apt deps ---------------------------------------------------------------
+# ca-certificates : SSL pour HF Hub
+# git : pull du code depuis GitHub si besoin (procédure README "Reprise rapide")
+# build-essential + gcc + g++ : compilation de pypcre (dep de gptqmodel)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         git \
@@ -47,31 +44,50 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# ---- Couche heavy : deps Python ---------------------------------------------
+# ---- Couche heavy : deps Python (~5 GB) -------------------------------------
 # Mise en cache séparée du code : tant que requirements.txt ne change pas,
 # cette couche est réutilisée → rebuild incrémental rapide.
 COPY requirements.txt .
 
-# Wheel CUDA 12.1 pré-compilé pour llama-cpp-python (gain ~10 min vs source build).
-# Réservé pour V2 backend GGUF — pas utilisé par le pipeline actuel mais déjà
-# disponible dans l'image pour ne pas avoir à rebuild plus tard.
+# 1) Wheel CUDA 12.1 pré-compilé pour llama-cpp-python (backend GGUF).
+#    Gain ~10 min vs source build.
 RUN pip install --upgrade pip && \
     pip install llama-cpp-python \
-        --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 && \
-    pip install -r requirements.txt && \
-    pip install autoawq
+        --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
 
-# ---- Couche light : code projet ---------------------------------------------
-# Ce COPY se réinvalide dès qu'un fichier source change → mais comme c'est en
-# dernier, seules les ~MB de code sont relayered.
+# 2) Force torch + torchvision aux versions compatibles AVANT le reste.
+#    L'image de base a déjà torch 2.5.1 + cuda 12.1, on ré-installe explicitement
+#    pour s'assurer que rien n'a été modifié et que torchvision est aligné.
+RUN pip install --no-cache-dir \
+    torch==2.5.1 \
+    torchvision==0.20.1 \
+    --index-url https://download.pytorch.org/whl/cu121
+
+# 3) Toutes les autres deps depuis requirements.txt (transformers, datasets,
+#    codecarbon, bitsandbytes, gptqmodel, compressed-tensors, autoawq, etc.)
+RUN pip install -r requirements.txt
+
+# 4) Sanity check au build : torch+torchvision matchent et l'opérateur nms
+#    existe (sinon le build échoue au lieu de planter au runtime).
+RUN python -c "import torch, torchvision; assert torch.__version__.startswith('2.5.1'), torch.__version__; assert torchvision.__version__.startswith('0.20'), torchvision.__version__; from torchvision.io import decode_image; print('torch', torch.__version__, 'torchvision', torchvision.__version__)"
+
+# ---- Résolution des libs CUDA pour llama-cpp-python -------------------------
+# llama-cpp-python compile en CUDA cherche libcudart/libcublas dans
+# LD_LIBRARY_PATH. Les libs sont fournies par les wheels nvidia/* installés
+# par torch dans /opt/conda/lib/python3.11/site-packages/nvidia/*/lib mais
+# ne sont pas dans LD_LIBRARY_PATH par défaut → on les ajoute via ldconfig
+# (méthode propre Linux qui survit aux nouvelles sessions).
+RUN find /opt/conda/lib/python3.11/site-packages/nvidia -name lib -type d > /etc/ld.so.conf.d/nvidia-conda.conf && ldconfig && python -c "from llama_cpp import Llama; print('llama_cpp loadable')"
+
+# ---- Couche light : code projet (relayered à chaque commit) -----------------
 COPY . .
 
-# Volumes recommandés au runtime :
-#   /cache/huggingface  : cache modèles HF (persiste entre runs, évite re-DL)
-#   /app/results        : registry.csv + artefacts par run (tu veux persister)
-#   /app/reports        : rapports JSON eval_loop (tu veux persister)
-RUN mkdir -p /cache/huggingface /app/results/runs /app/reports
+RUN chmod +x scripts/*.sh
 
-# Default : liste les modèles disponibles. Override avec :
-#   docker run ... resilient-ai python scripts/bench_all.py --all
-CMD ["python", "scripts/bench_all.py", "--list"]
+# ---- Entrypoint : crée /workspace/* + symlinks au start du container --------
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
+
+# Default : sleep infinity → permet SSH dans le pod sans que le container exit.
+# Override possible via Runpod template ou docker run :
+#   docker run ... resilient-ai bash scripts/bench_safe.sh
+CMD ["sleep", "infinity"]
