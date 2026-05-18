@@ -77,7 +77,9 @@ RUN pip install gptqmodel || echo "WARNING: gptqmodel install failed - Chunity A
 
 # 4) Sanity check au build : torch+torchvision matchent et l'opérateur nms
 #    existe (sinon le build échoue au lieu de planter au runtime).
-RUN python -c "import torch, torchvision; assert torch.__version__.startswith('2.5.1'), torch.__version__; assert torchvision.__version__.startswith('0.20'), torchvision.__version__; from torchvision.io import decode_image; print('torch', torch.__version__, 'torchvision', torchvision.__version__)"
+#    Print AVANT assert pour que les logs GHA montrent la version réelle
+#    en cas d'échec (debug plus rapide).
+RUN python -c "import torch, torchvision; print('torch', torch.__version__, 'torchvision', torchvision.__version__); from torchvision.io import decode_image; print('decode_image import OK'); assert torch.__version__.startswith('2.5.1'), torch.__version__; assert torchvision.__version__.startswith('0.20'), torchvision.__version__"
 
 # ---- Résolution des libs CUDA pour llama-cpp-python -------------------------
 # llama-cpp-python compile en CUDA cherche libcudart/libcublas dans

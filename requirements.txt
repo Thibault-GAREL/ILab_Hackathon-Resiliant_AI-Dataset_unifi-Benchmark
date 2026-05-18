@@ -2,12 +2,11 @@
 # Pinné pour Runpod (A100 40GB / RTX 4090 24GB)
 # Aligné sur les versions du document méthode (Resilience_IA_Distillation.pdf, §VI.2)
 
-# torch est fourni par l'image base (pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime)
-# → ne PAS le réinstaller via pip pour éviter le mismatch avec torchvision.
-# torchvision : épinglé pour matcher torch 2.5.1 (sinon erreur
-# "operator torchvision::nms does not exist" au runtime).
-torch==2.5.1
-torchvision==0.20.1
+# torch et torchvision SONT INSTALLÉS À PART dans le Dockerfile (via
+# --index-url PyTorch CUDA 12.1) AVANT cette étape. NE PAS les lister ici :
+# pip considérerait `torch==2.5.1` comme différent de `torch==2.5.1+cu121`
+# déjà installé et réinstallerait la version CPU depuis PyPI, cassant la
+# paire torch+torchvision (erreur "operator torchvision::nms does not exist").
 transformers>=4.44.0      # Gemma 3n natif (Gemma 4 : bumper la version au moment du kickoff)
 accelerate>=0.30.0
 peft>=0.10.0
