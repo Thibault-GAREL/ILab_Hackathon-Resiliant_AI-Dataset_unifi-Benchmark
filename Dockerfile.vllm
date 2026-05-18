@@ -1,11 +1,8 @@
 # =============================================================================
-# Dockerfile.vllm — image Phil pour tester transformers + GGUF + vLLM ensemble
+# Dockerfile.vllm — image benchmark avec backend vLLM
 #
-# Base compatible vLLM 0.19.1 :
+# Base compatible vLLM 0.19.1
 #   torch 2.10.0 + CUDA 12.8 + transformers 4.57.1
-#
-# Le Dockerfile principal reste celui de Thibault. Celui-ci sert à publier une
-# image opt-in sur la branche phil-vllm-backend.
 # =============================================================================
 FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-devel
 
@@ -40,7 +37,7 @@ COPY requirements.txt .
 
 RUN pip install --upgrade pip setuptools wheel
 
-# Base benchmark + versions qui restent compatibles avec vLLM 0.19.1.
+# Stack benchmark alignee sur vLLM 0.19.1.
 RUN pip install -r requirements.txt && \
     pip install \
         "transformers==4.57.1" \
@@ -49,12 +46,12 @@ RUN pip install -r requirements.txt && \
         "compressed-tensors==0.15.0.1" \
         "vllm==0.19.1"
 
-# Pas de wheel llama-cpp-python CUDA 12.8 officielle : compilation source.
+# llama-cpp-python CUDA 12.8 : compilation source.
 RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=80;86;89;90" \
     FORCE_CMAKE=1 \
     pip install "llama-cpp-python==0.3.23"
 
-# Deps AWQ/GPTQ en best-effort : utiles pour comparer, non bloquantes.
+# Deps AWQ/GPTQ optionnelles.
 RUN pip install "autoawq==0.2.9" || echo "WARNING: autoawq install failed"
 RUN pip install "gptqmodel==5.7.0" || echo "WARNING: gptqmodel install failed"
 

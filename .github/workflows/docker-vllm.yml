@@ -1,5 +1,5 @@
 # =============================================================================
-# Build et push de l'image Docker vLLM de Phil sur GHCR.
+# Build et push de l'image Docker vLLM sur GHCR.
 #
 # Image publiée :
 #   ghcr.io/<owner>/<repo>:phil-vllm-backend-vllm
