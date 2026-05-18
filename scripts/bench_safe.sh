@@ -35,6 +35,27 @@ else
     echo "⚠ /workspace introuvable — HF cache restera sur le container disk."
 fi
 
+# ----- 1bis. CUDA libs pour llama-cpp-python (backend GGUF) -----------------
+# llama-cpp-python compile avec CUDA cherche libcudart.so.12 / libcublas.so.12
+# dans LD_LIBRARY_PATH. Sur l'image PyTorch runtime, ces libs sont fournies
+# par les wheels nvidia/* dans /opt/conda/lib/python3.11/site-packages/nvidia/*/lib
+# mais ne sont pas dans LD_LIBRARY_PATH par défaut → ajout systématique ici.
+NVIDIA_LIB_ROOT=/opt/conda/lib/python3.11/site-packages/nvidia
+if [ -d "$NVIDIA_LIB_ROOT" ]; then
+    NVIDIA_LIBS=$(find "$NVIDIA_LIB_ROOT" -name "*.so*" 2>/dev/null \
+        | xargs -I {} dirname {} | sort -u | tr '\n' ':')
+    export LD_LIBRARY_PATH="${NVIDIA_LIBS}${LD_LIBRARY_PATH:-}"
+    echo "[bench_safe] LD_LIBRARY_PATH set ($(echo "$NVIDIA_LIBS" | tr ':' '\n' | wc -l) dossiers nvidia)"
+fi
+
+# ----- 1ter. TMPDIR vers /workspace pour pip et caches divers ---------------
+# /tmp est sur le container disk (5 GB max) → un download torch sature.
+if [ -d /workspace ]; then
+    export TMPDIR=/workspace/tmp
+    export PIP_CACHE_DIR=/workspace/pip-cache
+    mkdir -p /workspace/tmp /workspace/pip-cache
+fi
+
 # ----- 2. Symlink results/ et reports/ vers /workspace ----------------------
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 for d in results reports; do
