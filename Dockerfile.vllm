@@ -1,16 +1,14 @@
 # =============================================================================
-# Dockerfile.vllm — image benchmark avec backend vLLM
+# Dockerfile.vllm - image benchmark avec backend vLLM
 #
-# Base compatible vLLM 0.19.1.
-#   torch 2.10.0 + CUDA 12.8 + transformers 4.57.1
+# Base officielle vLLM 0.19.1.
 # =============================================================================
-FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-devel
+FROM vllm/vllm-openai:v0.19.1
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_BREAK_SYSTEM_PACKAGES=1 \
     CODECARBON_LOG_LEVEL=error
 
 ENV HF_HOME=/workspace/hf-cache \
@@ -19,32 +17,32 @@ ENV HF_HOME=/workspace/hf-cache \
     TMPDIR=/workspace/tmp \
     PIP_CACHE_DIR=/workspace/pip-cache
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        git \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 RUN mkdir -p /workspace/tmp /workspace/pip-cache /workspace/hf-cache/hub
 
-COPY requirements.txt .
+RUN python -m pip install --upgrade pip setuptools wheel
 
-RUN pip install --upgrade pip setuptools wheel
-
-# Stack benchmark alignee sur vLLM 0.19.1.
-RUN pip install -r requirements.txt && \
-    pip install \
-        "transformers==4.57.1" \
-        "accelerate>=1.10.1,<2" \
-        "bitsandbytes==0.49.2" \
-        "compressed-tensors==0.15.0.1" \
-        "vllm==0.19.1"
+# Deps benchmark uniquement, la stack vLLM vient de l'image de base.
+RUN python -m pip install \
+        "datasets>=2.20.0" \
+        "evaluate>=0.4.0" \
+        "nltk>=3.8" \
+        "rouge-score>=0.1.2" \
+        "scipy>=1.11" \
+        "numpy>=1.26" \
+        "codecarbon>=2.4.0" \
+        "nvidia-ml-py>=12.535" \
+        "psutil>=5.9" \
+        "tqdm>=4.66" \
+        "python-Levenshtein>=0.25" \
+        "PyYAML>=6.0" \
+        "Pillow>=10.0.0"
 
 COPY . .
 
 RUN chmod +x scripts/*.sh && \
-    python -c "import torch, transformers, vllm; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('transformers', transformers.__version__); print('vllm', vllm.__version__); assert torch.__version__.startswith('2.10.0'), torch.__version__; assert transformers.__version__ == '4.57.1', transformers.__version__; assert vllm.__version__ == '0.19.1', vllm.__version__"
+    python -c "import torch, transformers, vllm; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('transformers', transformers.__version__); print('vllm', vllm.__version__); assert vllm.__version__ == '0.19.1', vllm.__version__"
 
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["sleep", "infinity"]
