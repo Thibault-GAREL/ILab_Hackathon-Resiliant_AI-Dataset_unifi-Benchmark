@@ -94,7 +94,13 @@ RUN python -c "import torch, torchvision; print('torch', torch.__version__, 'tor
 # par torch dans /opt/conda/lib/python3.11/site-packages/nvidia/*/lib mais
 # ne sont pas dans LD_LIBRARY_PATH par défaut → on les ajoute via ldconfig
 # (méthode propre Linux qui survit aux nouvelles sessions).
-RUN find /opt/conda/lib/python3.11/site-packages/nvidia -name lib -type d > /etc/ld.so.conf.d/nvidia-conda.conf && ldconfig && python -c "from llama_cpp import Llama; print('llama_cpp loadable')"
+#
+# ⚠️ On NE TESTE PAS `from llama_cpp import Llama` au build : llama_cpp
+# charge libcuda.so.1 (pilote NVIDIA, pas le runtime), qui n'existe que
+# sur une machine avec GPU + NVIDIA Container Runtime. Sur GHA il n'y a
+# pas de driver → l'import planterait au build mais marche au runtime
+# sur Runpod.
+RUN find /opt/conda/lib/python3.11/site-packages/nvidia -name lib -type d > /etc/ld.so.conf.d/nvidia-conda.conf && ldconfig
 
 # ---- Couche light : code projet (relayered à chaque commit) -----------------
 COPY . .
