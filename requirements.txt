@@ -38,7 +38,11 @@ pydantic>=2.5
 python-Levenshtein>=0.25  # ANLS pour DocVQA
 PyYAML>=6.0               # Lecture configs/models.yaml par scripts/bench_all.py
 
-# Quantizers transformers utilises par les modeles AWQ du benchmark
-autoawq                   # AWQ standard transformers (legacy mais demande par certains modeles)
-gptqmodel                 # Chunity/gemma-4-E4B-it-AWQ-4bit (transformers >=4.46 prefere ce backend)
-compressed-tensors        # cyankiwi/gemma-4-E4B-it-AWQ-INT4|INT8
+# Quantizer transformers utilise par les modeles AWQ cyankiwi
+compressed-tensors        # cyankiwi/gemma-4-E4B-it-AWQ-INT4|INT8 (pure Python, stable)
+
+# Note : autoawq et gptqmodel sont installes SEPAREMENT dans le Dockerfile
+# (etape best-effort, peuvent echouer sans bloquer le build car ils
+# compilent du C++ et sont fragiles selon l'env). Si ils manquent dans
+# l'image runtime, seuls les modeles AWQ Chunity / autres formats AWQ
+# legacy seront indisponibles ; tout le reste continue de marcher.
