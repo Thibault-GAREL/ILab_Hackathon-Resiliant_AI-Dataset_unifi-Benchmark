@@ -21,10 +21,10 @@ WORKDIR /app
 
 RUN mkdir -p /workspace/tmp /workspace/pip-cache /workspace/hf-cache/hub
 
-RUN python -m pip install --upgrade pip setuptools wheel
+RUN python3 -m pip install --upgrade pip setuptools wheel
 
 # Deps benchmark uniquement, la stack vLLM vient de l'image de base.
-RUN python -m pip install \
+RUN python3 -m pip install \
         "datasets>=2.20.0" \
         "evaluate>=0.4.0" \
         "nltk>=3.8" \
@@ -42,7 +42,7 @@ RUN python -m pip install \
 COPY . .
 
 RUN chmod +x scripts/*.sh && \
-    python -c "import torch, transformers, vllm; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('transformers', transformers.__version__); print('vllm', vllm.__version__); assert vllm.__version__ == '0.19.1', vllm.__version__"
+    python3 -c "import torch, transformers, vllm; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('transformers', transformers.__version__); print('vllm', vllm.__version__); assert vllm.__version__ == '0.19.1', vllm.__version__"
 
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["sleep", "infinity"]
