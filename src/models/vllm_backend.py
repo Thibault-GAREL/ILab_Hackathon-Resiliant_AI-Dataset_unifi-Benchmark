@@ -56,7 +56,7 @@ def make_vllm_generate_fn(
         from vllm import LLM, SamplingParams
         from transformers import AutoProcessor
     except ImportError as exc:
-        raise RuntimeError("vLLM non installé. Installer une wheel compatible CUDA/Torch avant --backend vllm.") from exc
+        raise RuntimeError('vLLM non installé. Sur RunPod : pip install "vllm==0.20.2" avant --backend vllm.') from exc
 
     processor_kwargs: dict[str, Any] = {"trust_remote_code": True}
     if revision:

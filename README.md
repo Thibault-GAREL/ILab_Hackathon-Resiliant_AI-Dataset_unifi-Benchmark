@@ -351,6 +351,12 @@ models:
 Les entrées vLLM doivent rester opt-in pour ne pas casser le batch standard :
 ajoute `run_by_default: false`, puis lance-les avec `--label` ou `--group`.
 
+Sur RunPod, installe la version figée avant de lancer le smoke :
+
+```bash
+pip install "vllm==0.20.2"
+```
+
 ```yaml
 models:
   - label: mon-vllm-fp8-soft140
