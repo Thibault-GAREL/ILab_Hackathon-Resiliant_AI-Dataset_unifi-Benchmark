@@ -74,16 +74,55 @@ def _resolve_chat_handler(model_family: str | None, mmproj_path: str):
 
 def _resolve_path(repo: str, filename: str) -> str:
     """Si `repo` est un dossier local existant, joint avec `filename` ;
-    sinon télécharge le fichier depuis le hub HF et retourne le chemin local."""
+    sinon télécharge le fichier depuis le hub HF et retourne le chemin local.
+
+    Supporte les globs (`*`, `?`, `[...]`) dans `filename` : on liste les
+    fichiers du repo, on garde le premier match. Indispensable car
+    `hf_hub_download` ne gère pas les globs et tape une URL littérale
+    (ex: `mmproj-*f16.gguf` → 404).
+    """
+    import fnmatch
     repo_path = Path(repo)
+
+    is_glob = any(c in filename for c in ["*", "?", "["])
+
+    # Cas local : dossier sur disque
     if repo_path.is_dir():
+        if is_glob:
+            matches = sorted(repo_path.glob(filename))
+            if not matches:
+                raise FileNotFoundError(
+                    f"Aucun fichier ne match {filename!r} dans {repo}"
+                )
+            return str(matches[0])
         local = repo_path / filename
         if not local.exists():
             raise FileNotFoundError(f"{local} introuvable dans {repo}")
         return str(local)
 
-    # Téléchargement depuis le hub HF (suppose huggingface_hub installé).
-    from huggingface_hub import hf_hub_download
+    # Cas hub HF
+    from huggingface_hub import hf_hub_download, HfApi
+
+    if is_glob:
+        api = HfApi()
+        try:
+            files = api.list_repo_files(repo_id=repo)
+        except Exception as e:
+            raise RuntimeError(
+                f"Impossible de lister les fichiers de {repo}: {e}"
+            ) from e
+        matches = [f for f in files if fnmatch.fnmatch(f, filename)]
+        if not matches:
+            # Suggère les ggufs disponibles pour aider le debug
+            ggufs = [f for f in files if f.endswith(".gguf")][:10]
+            raise FileNotFoundError(
+                f"Aucun fichier ne match {filename!r} dans {repo}.\n"
+                f"GGUF disponibles (10 premiers) : {ggufs}"
+            )
+        resolved = sorted(matches)[0]
+        print(f"   [resolve] glob {filename!r} → {resolved}")
+        filename = resolved
+
     return hf_hub_download(repo_id=repo, filename=filename)
 
 
