@@ -64,8 +64,16 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cu121
 
 # 3) Toutes les autres deps depuis requirements.txt (transformers, datasets,
-#    codecarbon, bitsandbytes, gptqmodel, compressed-tensors, autoawq, etc.)
+#    codecarbon, bitsandbytes, compressed-tensors, etc.). NB : autoawq et
+#    gptqmodel sont installes en best-effort apres (etapes risquees).
 RUN pip install -r requirements.txt
+
+# 3bis) autoawq et gptqmodel : best-effort (ces packages compilent du C/C++
+#       et peuvent echouer sur GHA ou des envs serres). En cas d'echec, le
+#       build continue sans eux ; seuls les modeles AWQ Chunity / certains
+#       formats AWQ legacy seront indisponibles a l'execution.
+RUN pip install autoawq || echo "WARNING: autoawq install failed - AWQ legacy models will not load"
+RUN pip install gptqmodel || echo "WARNING: gptqmodel install failed - Chunity AWQ models will not load"
 
 # 4) Sanity check au build : torch+torchvision matchent et l'opérateur nms
 #    existe (sinon le build échoue au lieu de planter au runtime).
