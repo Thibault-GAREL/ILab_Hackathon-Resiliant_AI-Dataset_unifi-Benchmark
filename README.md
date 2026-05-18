@@ -354,7 +354,7 @@ ajoute `run_by_default: false`, puis lance-les avec `--label` ou `--group`.
 Sur RunPod, installe la version figée avant de lancer le smoke :
 
 ```bash
-pip install "vllm==0.20.2"
+pip install "vllm==0.19.1"
 ```
 
 ```yaml

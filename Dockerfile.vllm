@@ -1,0 +1,64 @@
+# =============================================================================
+# Dockerfile.vllm — image Phil pour tester transformers + GGUF + vLLM ensemble
+#
+# Base compatible vLLM 0.19.1 :
+#   torch 2.10.0 + CUDA 12.8 + transformers 4.57.1
+#
+# Le Dockerfile principal reste celui de Thibault. Celui-ci sert à publier une
+# image opt-in sur la branche phil-vllm-backend.
+# =============================================================================
+FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-devel
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    CODECARBON_LOG_LEVEL=error
+
+ENV HF_HOME=/workspace/hf-cache \
+    HF_HUB_CACHE=/workspace/hf-cache/hub \
+    TRANSFORMERS_CACHE=/workspace/hf-cache \
+    TMPDIR=/workspace/tmp \
+    PIP_CACHE_DIR=/workspace/pip-cache
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        gcc \
+        g++ \
+        build-essential \
+        cmake \
+        ninja-build \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --upgrade pip setuptools wheel
+
+# Base benchmark + versions qui restent compatibles avec vLLM 0.19.1.
+RUN pip install -r requirements.txt && \
+    pip install \
+        "transformers==4.57.1" \
+        "accelerate>=1.10.1,<2" \
+        "bitsandbytes==0.49.2" \
+        "compressed-tensors==0.15.0.1" \
+        "vllm==0.19.1"
+
+# Pas de wheel llama-cpp-python CUDA 12.8 officielle : compilation source.
+RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=80;86;89;90" \
+    FORCE_CMAKE=1 \
+    pip install "llama-cpp-python==0.3.23"
+
+# Deps AWQ/GPTQ en best-effort : utiles pour comparer, non bloquantes.
+RUN pip install "autoawq==0.2.9" || echo "WARNING: autoawq install failed"
+RUN pip install "gptqmodel==5.7.0" || echo "WARNING: gptqmodel install failed"
+
+COPY . .
+
+RUN chmod +x scripts/*.sh && \
+    python -c "import torch, transformers, vllm; from llama_cpp import Llama; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('transformers', transformers.__version__); print('vllm', vllm.__version__); print('llama_cpp loadable', Llama is not None); assert torch.__version__.startswith('2.10.0'), torch.__version__; assert transformers.__version__ == '4.57.1', transformers.__version__; assert vllm.__version__ == '0.19.1', vllm.__version__"
+
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
+CMD ["sleep", "infinity"]
