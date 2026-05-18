@@ -1,7 +1,7 @@
 # =============================================================================
 # Dockerfile.vllm — image benchmark avec backend vLLM
 #
-# Base compatible vLLM 0.19.1
+# Base compatible vLLM 0.19.1.
 #   torch 2.10.0 + CUDA 12.8 + transformers 4.57.1
 # =============================================================================
 FROM pytorch/pytorch:2.10.0-cuda12.8-cudnn9-devel
@@ -22,11 +22,6 @@ ENV HF_HOME=/workspace/hf-cache \
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         git \
-        gcc \
-        g++ \
-        build-essential \
-        cmake \
-        ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -46,19 +41,10 @@ RUN pip install -r requirements.txt && \
         "compressed-tensors==0.15.0.1" \
         "vllm==0.19.1"
 
-# llama-cpp-python CUDA 12.8 : compilation source.
-RUN CMAKE_ARGS="-DGGML_CUDA=on -DCMAKE_CUDA_ARCHITECTURES=80;86;89;90" \
-    FORCE_CMAKE=1 \
-    pip install "llama-cpp-python==0.3.23"
-
-# Deps AWQ/GPTQ optionnelles.
-RUN pip install "autoawq==0.2.9" || echo "WARNING: autoawq install failed"
-RUN pip install "gptqmodel==5.7.0" || echo "WARNING: gptqmodel install failed"
-
 COPY . .
 
 RUN chmod +x scripts/*.sh && \
-    python -c "import torch, transformers, vllm; from llama_cpp import Llama; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('transformers', transformers.__version__); print('vllm', vllm.__version__); print('llama_cpp loadable', Llama is not None); assert torch.__version__.startswith('2.10.0'), torch.__version__; assert transformers.__version__ == '4.57.1', transformers.__version__; assert vllm.__version__ == '0.19.1', vllm.__version__"
+    python -c "import torch, transformers, vllm; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('transformers', transformers.__version__); print('vllm', vllm.__version__); assert torch.__version__.startswith('2.10.0'), torch.__version__; assert transformers.__version__ == '4.57.1', transformers.__version__; assert vllm.__version__ == '0.19.1', vllm.__version__"
 
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 CMD ["sleep", "infinity"]
