@@ -483,3 +483,30 @@ VQAv2 reste bon.
 4. Pour comparer deux runs : ne pas se fier au JSON, ouvrir
    `results/registry.csv` et comparer côte-à-côte. Les KPIs énergie sont
    plus stables que les scores absolus.
+
+## A faire comme commande :
+```bash
+python scripts/bench_all.py --all --skip_existing \
+    --dataset_local /workspace/code/data/unified \
+    --limit_per_source 20 \
+    --cleanup_cache_after
+```
+
+puis
+
+```bash
+# 1. apt-get install git (jusqu'à ce que le prochain rebuild Docker l'inclue)
+apt-get update -qq && apt-get install -y -qq git
+
+# 2. Pull le code
+rm -rf /tmp/repo && git clone --depth 1 https://github.com/Thibault-GAREL/ILab_Hackathon-Resiliant_AI-Dataset_unifi-Benchmark.git /tmp/repo
+cp /tmp/repo/{src/validation/benchmark.py,scripts/eval_loop.py,scripts/bench_all.py,scripts/bench_safe.sh,configs/models.yaml} /app/...
+# (ou voir README section "Reprise rapide" pour la commande complète)
+
+# 3. Re-install AWQ deps (en attente du rebuild Docker GHA)
+pip install -q -U bitsandbytes gptqmodel compressed-tensors
+
+# 4. Lance
+nohup bash /app/scripts/bench_safe.sh > /workspace/bench.log 2>&1 & disown
+tail -f /workspace/bench.log
+```
