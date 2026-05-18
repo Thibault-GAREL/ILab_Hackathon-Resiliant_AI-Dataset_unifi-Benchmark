@@ -161,6 +161,32 @@ LIMIT=5 bash scripts/bench_safe.sh
 LIMIT='' bash scripts/bench_safe.sh
 ```
 
+### Tester UN seul modèle (sans passer par bench_safe.sh)
+
+⚠️ **Ne jamais oublier `--dataset_local`** sinon `bench_all.py` retombe sur
+le `dataset_hub` du YAML et tente de re-télécharger les ~50 GB du dataset
+depuis HuggingFace (saturation disque / timeout réseau garantis).
+
+```bash
+# Bon — utilise le dataset local déjà présent sur /workspace
+python scripts/bench_all.py \
+    --label gemma4-e4b-gguf-q4km \
+    --dataset_local /workspace/code/data/unified \
+    --limit_per_source 5
+
+# Plusieurs modèles
+python scripts/bench_all.py \
+    --label gemma4-e4b-gguf-q4km \
+    --label gemma4-e4b-gguf-q8 \
+    --dataset_local /workspace/code/data/unified \
+    --limit_per_source 5
+```
+
+Avantage du wrapper `bench_safe.sh` : il ajoute systématiquement
+`--dataset_local`, `--cleanup_cache_after`, `--country_iso CZE`, etc.
+→ Préférer le wrapper pour les runs sérieux, l'appel direct uniquement
+pour debug ponctuel.
+
 ### Étape 5 — Récupère les résultats sur ton PC
 
 ```bash
