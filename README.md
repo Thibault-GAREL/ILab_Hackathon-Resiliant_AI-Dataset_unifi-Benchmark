@@ -419,6 +419,36 @@ models:
     notes: "GGUF Q4_K_M via llama.cpp"
 ```
 
+### Backend `vllm` (HF / vLLM offline)
+
+Les entrées vLLM doivent rester opt-in pour ne pas casser le batch standard :
+ajoute `run_by_default: false`, puis lance-les avec `--label` ou `--group`.
+
+```yaml
+models:
+  - label: mon-vllm-fp8-soft140
+    backend: vllm
+    run_by_default: false
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    notes: "vLLM FP8 + KV FP8, soft140"
+```
+
+Smoke explicite :
+
+```bash
+python scripts/bench_all.py \
+  --group vllm_smoke \
+  --dataset_local /workspace/code/data/unified \
+  --limit_per_source 2 \
+  --subsample_pct 100 \
+  --country_iso CZE
+```
+
 ### Compatibilité formats
 
 | Format | Backend | Statut |
@@ -426,6 +456,7 @@ models:
 | Safetensors BF16 (Google officiel) | `transformers` | ✅ Stable |
 | bitsandbytes 4-bit (`*-bnb-4bit`) | `transformers` + `bitsandbytes` | ✅ Stable |
 | AWQ (`*-AWQ-4bit`) | `transformers` + `autoawq` | ✅ Stable |
+| Safetensors vLLM FP8 / KV FP8 | `vllm` | ⚠️ Opt-in smoke |
 | GGUF imatrix (bartowski Q*/IQ*) | `llama_cpp` | ⚠️ Expérimental |
 | GGUF Dynamic (unsloth UD-*) | `llama_cpp` | ⚠️ Expérimental |
 | MLX | – | ❌ Apple Silicon only |
