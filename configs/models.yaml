@@ -49,11 +49,14 @@ models:
     model_path: google/gemma-4-E2B-it
     notes: "Gemma 4 E2B-it BF16 — borne basse, 2x plus petit"
 
-  # ---- AWQ (compresseur GPU-natif, formats compressed-tensors / gptqmodel)
-  - label: gemma4-e4b-awq-chunity
-    model_path: Chunity/gemma-4-E4B-it-AWQ-4bit
-    extras: gptqmodel
-    notes: "AWQ 4-bit Chunity"
+  # ---- AWQ (compresseur GPU-natif via compressed-tensors) -----------------
+  # Note : Chunity/gemma-4-E4B-it-AWQ-4bit retire car necessite gptqmodel,
+  # qui tire torchao 0.17 et force torch==2.12.0 (CUDA 13) en cassant tout
+  # le reste. Si besoin un jour, le tester dans un venv separe.
+  # - label: gemma4-e4b-awq-chunity
+  #   model_path: Chunity/gemma-4-E4B-it-AWQ-4bit
+  #   extras: gptqmodel
+  #   notes: "AWQ 4-bit Chunity (necessite venv separe avec torch 2.12+CUDA 13)"
 
   - label: gemma4-e4b-awq-cyankiwi-int4
     model_path: cyankiwi/gemma-4-E4B-it-AWQ-INT4
