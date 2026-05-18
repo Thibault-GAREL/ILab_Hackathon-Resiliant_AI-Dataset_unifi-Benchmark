@@ -54,8 +54,14 @@ def make_vllm_generate_fn(
     try:
         import vllm
         from vllm import LLM, SamplingParams
+        from transformers import AutoProcessor
     except ImportError as exc:
         raise RuntimeError("vLLM non installé. Installer une wheel compatible CUDA/Torch avant --backend vllm.") from exc
+
+    processor_kwargs: dict[str, Any] = {"trust_remote_code": True}
+    if revision:
+        processor_kwargs["revision"] = revision
+    processor = AutoProcessor.from_pretrained(model_path, **processor_kwargs)
 
     llm_kwargs: dict[str, Any] = {
         "model": model_path,
@@ -65,6 +71,7 @@ def make_vllm_generate_fn(
         "max_num_seqs": max_num_seqs,
         "limit_mm_per_prompt": {"image": 1},
         "enforce_eager": enforce_eager,
+        "trust_remote_code": True,
     }
     if dtype != "auto":
         llm_kwargs["dtype"] = dtype
@@ -94,21 +101,26 @@ def make_vllm_generate_fn(
         if seed is not None and "seed" in sampling_fields:
             sampling_kwargs["seed"] = seed
         sampling = SamplingParams(**sampling_kwargs)
-        mm_processor_kwargs = {"max_soft_tokens": max_soft_tokens} if max_soft_tokens else None
-        conversation = [
+        messages = [
             {
                 "role": "user",
                 "content": [
-                    {"type": "image_pil", "image_pil": image},
+                    {"type": "image"},
                     {"type": "text", "text": _build_prompt(prompt, sample)},
                 ],
             }
         ]
-        outputs = llm.chat(
-            conversation,
-            sampling_params=sampling,
-            mm_processor_kwargs=mm_processor_kwargs,
-        )
+        request: dict[str, Any] = {
+            "prompt": processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            ),
+            "multi_modal_data": {"image": image.convert("RGB")},
+        }
+        if max_soft_tokens:
+            request["mm_processor_kwargs"] = {"max_soft_tokens": max_soft_tokens}
+        outputs = llm.generate(request, sampling_params=sampling)
         text = outputs[0].outputs[0].text if outputs else ""
         return _post_process_pred(text, str(task))
 

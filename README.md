@@ -139,7 +139,19 @@ python scripts/eval_loop.py \
   --out reports/vllm-smoke-fp8-kvfp8-soft140.json
 ```
 
-Si ce smoke passe, lancer ensuite le groupe `vllm_submission_candidate`.
+Alternative batch explicite :
+
+```bash
+python scripts/bench_all.py \
+  --group vllm_smoke \
+  --dataset_local /workspace/code/data/unified \
+  --limit_per_source 2 \
+  --subsample_pct 100 \
+  --country_iso CZE
+```
+
+Les entrées vLLM sont opt-in : `bench_safe.sh` / `bench_all.py --all` ne les
+lancent pas tant qu'un label ou un groupe vLLM n'est pas demandé.
 
 ### Modèles du YAML actuel ([configs/models.yaml](configs/models.yaml))
 

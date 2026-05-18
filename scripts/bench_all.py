@@ -18,7 +18,7 @@ Usage (depuis la racine du projet) :
     python scripts/bench_all.py --label gemma4-e4b-bf16 --label gemma4-e4b-bnb4
 
     # Lancer un groupe YAML (ex: smoke vLLM)
-    python scripts/bench_all.py --group vllm_submission_candidate
+    python scripts/bench_all.py --group vllm_smoke
 
     # Override du subsample (full split avant soumission)
     python scripts/bench_all.py --all --subsample_pct 100
@@ -220,7 +220,7 @@ def main() -> int:
         ap.error("--all est mutuellement exclusif avec --label / --group.")
 
     if args.all:
-        selected = models
+        selected = [m for m in models if m.get("run_by_default", True)]
     elif args.label:
         by_label = {m["label"]: m for m in models}
         unknown = [lab for lab in args.label if lab not in by_label]

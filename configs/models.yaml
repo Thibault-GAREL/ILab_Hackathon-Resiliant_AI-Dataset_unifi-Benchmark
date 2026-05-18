@@ -37,6 +37,9 @@ defaults:
   vllm_seed: 42
 
 groups:
+  vllm_smoke:
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+
   # Smoke vLLM court : contrôle BF16 + candidat runtime.
   vllm_submission_candidate:
     - gemma4-e4b-vllm-bf16-soft140-t16
@@ -91,6 +94,7 @@ models:
 
   - label: gemma4-e4b-vllm-bf16-soft140-t16
     backend: vllm
+    run_by_default: false
     model_path: google/gemma-4-E4B-it
     max_new_tokens: 16
     vllm_max_soft_tokens: 140
@@ -99,6 +103,7 @@ models:
 
   - label: gemma4-e4b-vllm-bf16-soft280-t16
     backend: vllm
+    run_by_default: false
     model_path: google/gemma-4-E4B-it
     max_new_tokens: 16
     vllm_max_soft_tokens: 280
@@ -108,6 +113,7 @@ models:
   # ---- E4B : FP8 weights --------------------------------------------------
   - label: gemma4-e4b-vllm-fp8-soft140-t16
     backend: vllm
+    run_by_default: false
     model_path: google/gemma-4-E4B-it
     max_new_tokens: 16
     vllm_max_soft_tokens: 140
@@ -117,6 +123,7 @@ models:
 
   - label: gemma4-e4b-vllm-fp8-soft280-t16
     backend: vllm
+    run_by_default: false
     model_path: google/gemma-4-E4B-it
     max_new_tokens: 16
     vllm_max_soft_tokens: 280
@@ -127,6 +134,7 @@ models:
   # ---- E4B : FP8 weights + KV FP8 ----------------------------------------
   - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
     backend: vllm
+    run_by_default: false
     model_path: google/gemma-4-E4B-it
     max_new_tokens: 16
     vllm_max_soft_tokens: 140
@@ -137,6 +145,7 @@ models:
 
   - label: gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
     backend: vllm
+    run_by_default: false
     model_path: google/gemma-4-E4B-it
     max_new_tokens: 16
     vllm_max_soft_tokens: 280
