@@ -221,6 +221,100 @@ models:
     model_family: gemma4
     notes: "GGUF E2B Q4_K_M (~3 GB) — borne basse en taille"
 
+  # ---- E4B GGUF axelbrons : grille étendue ---------------------------------
+  # 10 quantifications du même modèle base, chacune dans son propre repo HF.
+  # Le mmproj n'est pas dans ces repos → on réutilise celui de bartowski
+  # (compatible car même modèle source Gemma 4 E4B-it).
+  - label: gemma4-e4b-axelbrons-q2k
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q2_K
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q2_K — quantif extrême 2-bit"
+
+  - label: gemma4-e4b-axelbrons-q3ks
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q3_K_S
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q3_K_S"
+
+  - label: gemma4-e4b-axelbrons-q3km
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q3_K_M
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q3_K_M"
+
+  - label: gemma4-e4b-axelbrons-q3kl
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q3_K_L
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q3_K_L"
+
+  - label: gemma4-e4b-axelbrons-q4ks
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q4_K_S
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q4_K_S"
+
+  - label: gemma4-e4b-axelbrons-q4km
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-q4_k_m
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q4_K_M (repo en minuscules)"
+
+  - label: gemma4-e4b-axelbrons-q5ks
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q5_K_S
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q5_K_S"
+
+  - label: gemma4-e4b-axelbrons-q5km
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q5_K_M
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q5_K_M"
+
+  - label: gemma4-e4b-axelbrons-q6k
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q6_K
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q6_K"
+
+  - label: gemma4-e4b-axelbrons-q8
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q8_0
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q8_0"
+
 # =============================================================================
 # Hors scope :
 #   - MLX (mlx-community/*) : Apple Silicon uniquement, pas Runpod.
