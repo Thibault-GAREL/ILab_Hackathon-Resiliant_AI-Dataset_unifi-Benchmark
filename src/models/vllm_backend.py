@@ -89,39 +89,60 @@ def make_vllm_generate_fn(
     print(f"[load vllm] ok en {time.perf_counter() - load_t0:.1f}s (vllm={getattr(vllm, '__version__', 'unknown')})")
     sampling_fields = set(signature(SamplingParams).parameters)
 
-    def _gen(image, prompt, sample=None, **kwargs) -> str:
-        sample = sample or {}
-        task = sample.get("task", "vqa")
-        sampling_kwargs: dict[str, Any] = {
-            "temperature": temperature,
-            "top_p": top_p,
-            "top_k": top_k,
-            "max_tokens": max_new_tokens,
-        }
-        if seed is not None and "seed" in sampling_fields:
-            sampling_kwargs["seed"] = seed
-        sampling = SamplingParams(**sampling_kwargs)
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image"},
-                    {"type": "text", "text": _build_prompt(prompt, sample)},
-                ],
-            }
-        ]
-        request: dict[str, Any] = {
-            "prompt": processor.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True,
-            ),
-            "multi_modal_data": {"image": image.convert("RGB")},
-        }
-        if max_soft_tokens:
-            request["mm_processor_kwargs"] = {"max_soft_tokens": max_soft_tokens}
-        outputs = llm.generate(request, sampling_params=sampling)
-        text = outputs[0].outputs[0].text if outputs else ""
-        return _post_process_pred(text, str(task))
+    class VLLMGenerateFn:
+        def __init__(self) -> None:
+            self.llm = llm
+            self.processor = processor
+            self.closed = False
 
-    return _gen
+        def close(self) -> None:
+            if self.closed:
+                return
+            self.closed = True
+            for obj in (self.llm, getattr(self.llm, "llm_engine", None)):
+                shutdown = getattr(obj, "shutdown", None)
+                if callable(shutdown):
+                    try:
+                        shutdown()
+                        break
+                    except Exception:
+                        pass
+            self.llm = None
+            self.processor = None
+
+        def __call__(self, image, prompt, sample=None, **kwargs) -> str:
+            sample = sample or {}
+            task = sample.get("task", "vqa")
+            sampling_kwargs: dict[str, Any] = {
+                "temperature": temperature,
+                "top_p": top_p,
+                "top_k": top_k,
+                "max_tokens": max_new_tokens,
+            }
+            if seed is not None and "seed" in sampling_fields:
+                sampling_kwargs["seed"] = seed
+            sampling = SamplingParams(**sampling_kwargs)
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": _build_prompt(prompt, sample)},
+                    ],
+                }
+            ]
+            request: dict[str, Any] = {
+                "prompt": self.processor.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                ),
+                "multi_modal_data": {"image": image.convert("RGB")},
+            }
+            if max_soft_tokens:
+                request["mm_processor_kwargs"] = {"max_soft_tokens": max_soft_tokens}
+            outputs = self.llm.generate(request, sampling_params=sampling)
+            text = outputs[0].outputs[0].text if outputs else ""
+            return _post_process_pred(text, str(task))
+
+    return VLLMGenerateFn()
