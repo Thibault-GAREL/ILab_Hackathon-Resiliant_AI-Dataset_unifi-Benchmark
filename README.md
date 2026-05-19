@@ -6,7 +6,7 @@ Code partagé de l'équipe. Trois responsabilités :
 2. **Benchmark interne** (10% du dataset, par-source, métrique adaptée) — `scripts/eval_loop.py`
 3. **Tracking énergie + traçabilité** (CodeCarbon + registry CSV) — `src/tracking/`
 
-> Le code cible Gemma 3n E4B → Student E4B-it (config officielle kickoff
+> Le code cible Gemma 4 E4B → Student E4B-it (config officielle kickoff
 > 27/04). Pour Gemma 4 quand l'API se stabilisera, bumper `transformers` et
 > ajuster `make_gemma_generate_fn` si l'API du processor change.
 
