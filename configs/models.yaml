@@ -57,6 +57,21 @@ groups:
     - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
     - gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
 
+  # Grille vLLM complète sans changer d'artefact HF.
+  vllm_full_grid:
+    - gemma4-e4b-vllm-bf16-soft140-t16
+    - gemma4-e4b-vllm-bf16-soft280-t16
+    - gemma4-e4b-vllm-fp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-soft280-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
+
+  # Probes : artefacts quantifiés HF chargés par vLLM si compatibles.
+  vllm_awq_probe:
+    - gemma4-e4b-vllm-awq-chunity-soft140-t16
+    - gemma4-e4b-vllm-ct-awq-int4-soft140-t16
+    - gemma4-e4b-vllm-ct-awq-int8-soft140-t16
+
 models:
   # =========================================================================
   # Backend transformers — safetensors
@@ -153,6 +168,35 @@ models:
     vllm_quantization: fp8
     vllm_kv_cache_dtype: fp8
     notes: "vLLM FP8 weights + KV FP8, soft280, t16"
+
+  # ---- E4B : artefacts HF quantifiés chargés dans vLLM -------------------
+  - label: gemma4-e4b-vllm-awq-chunity-soft140-t16
+    backend: vllm
+    run_by_default: false
+    model_path: Chunity/gemma-4-E4B-it-AWQ-4bit
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: awq
+    notes: "Probe vLLM AWQ 4-bit Chunity, soft140, t16"
+
+  - label: gemma4-e4b-vllm-ct-awq-int4-soft140-t16
+    backend: vllm
+    run_by_default: false
+    model_path: cyankiwi/gemma-4-E4B-it-AWQ-INT4
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    notes: "Probe vLLM compressed-tensors AWQ INT4 cyankiwi, soft140, t16"
+
+  - label: gemma4-e4b-vllm-ct-awq-int8-soft140-t16
+    backend: vllm
+    run_by_default: false
+    model_path: cyankiwi/gemma-4-E4B-it-AWQ-INT8
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    notes: "Probe vLLM compressed-tensors AWQ INT8 cyankiwi, soft140, t16"
 
   # =========================================================================
   # Backend llama_cpp — GGUF (quantifications classiques bartowski imatrix)

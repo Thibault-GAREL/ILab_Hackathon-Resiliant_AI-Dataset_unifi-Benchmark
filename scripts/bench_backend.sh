@@ -16,6 +16,7 @@ LIMIT="${LIMIT:-2}"
 SUBSAMPLE_PCT="${SUBSAMPLE_PCT:-100}"
 DATASET_HUB="${DATASET_HUB:-ECE-ILAB/resilient-ai-unified}"
 STREAMING_TAKE="${STREAMING_TAKE:-64}"
+STREAMING_PER_SOURCE="${STREAMING_PER_SOURCE:-}"
 
 if [ -z "${DATASET_LOCAL:-}" ]; then
     if [ -d /workspace/code/data/unified ]; then
@@ -51,8 +52,14 @@ if [ -n "${DATASET_LOCAL:-}" ]; then
     CMD+=(--dataset_local "$DATASET_LOCAL")
     DATASET_DESC="$DATASET_LOCAL"
 else
-    CMD+=(--dataset_hub "$DATASET_HUB" --dataset_streaming_take "$STREAMING_TAKE")
-    DATASET_DESC="$DATASET_HUB (streaming_take=$STREAMING_TAKE)"
+    CMD+=(--dataset_hub "$DATASET_HUB")
+    if [ -n "$STREAMING_PER_SOURCE" ]; then
+        CMD+=(--dataset_streaming_per_source "$STREAMING_PER_SOURCE")
+        DATASET_DESC="$DATASET_HUB (streaming_per_source=$STREAMING_PER_SOURCE)"
+    else
+        CMD+=(--dataset_streaming_take "$STREAMING_TAKE")
+        DATASET_DESC="$DATASET_HUB (streaming_take=$STREAMING_TAKE)"
+    fi
 fi
 
 case "$BACKEND" in

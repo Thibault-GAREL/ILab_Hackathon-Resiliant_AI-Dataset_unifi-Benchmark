@@ -152,6 +152,7 @@ def evaluate_source(
     batch_size: int = 1,
     track_energy: bool = True,
     project_label: str = "bench",
+    country_iso: str = "FRA",
 ) -> tuple[PerSourceResult, EnergySnapshot | None]:
     """Évalue un modèle sur un jeu de samples d'un même source.
 
@@ -177,7 +178,10 @@ def evaluate_source(
 
     snap: EnergySnapshot | None = None
     tracker = EnergyTracker(
-        project=project_label, task=source, n_samples=n,
+        project=project_label,
+        task=source,
+        n_samples=n,
+        country_iso_code=country_iso,
     ) if track_energy else None
 
     if tracker is not None:
@@ -243,6 +247,7 @@ def evaluate_model(
     subsample_seed: int = DEFAULT_SUBSAMPLE_SEED,
     track_energy: bool = True,
     project_label: str = "bench",
+    country_iso: str = "FRA",
 ) -> tuple[BenchmarkResult, list[EnergySnapshot]]:
     """Exécute le benchmark sur les sources présentes dans `dataset`.
 
@@ -291,6 +296,7 @@ def evaluate_model(
             samples, generate_fn, src, hint,
             track_energy=track_energy,
             project_label=project_label,
+            country_iso=country_iso,
         )
         results.append(r)
         if snap is not None:

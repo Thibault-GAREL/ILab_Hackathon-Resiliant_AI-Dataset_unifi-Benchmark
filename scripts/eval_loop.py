@@ -53,6 +53,7 @@ import argparse
 import json
 import sys
 import time
+from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -86,6 +87,27 @@ def _load_internal_dataset(args):
             dd = load_from_disk(args.dataset_local)
             return dd[args.split]
         if args.dataset_hub:
+            if args.dataset_streaming_per_source:
+                stream = load_dataset(args.dataset_hub, split=args.split, streaming=True)
+                target = args.dataset_streaming_per_source
+                wanted = set(args.sources or [])
+                buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+                for row in stream:
+                    src = row.get("source")
+                    if wanted and src not in wanted:
+                        continue
+                    if len(buckets[src]) < target:
+                        buckets[src].append(row)
+                    if wanted and all(len(buckets[src]) >= target for src in wanted):
+                        break
+                rows = [row for src in sorted(buckets) for row in buckets[src]]
+                if not rows:
+                    raise SystemExit(
+                        f"Aucun sample lu depuis {args.dataset_hub}/{args.split}."
+                    )
+                counts = ", ".join(f"{src}={len(rows)}" for src, rows in sorted(buckets.items()))
+                print(f"[data] streaming hub par-source: {counts}")
+                return rows
             if args.dataset_streaming_take:
                 stream = load_dataset(args.dataset_hub, split=args.split, streaming=True)
                 rows = []
@@ -258,6 +280,9 @@ def main() -> int:
     ap.add_argument("--dataset_streaming_take", type=int, default=None,
                     help="Charge seulement les N premiers samples du hub en streaming "
                          "(utile pour smoke Runpod sans télécharger tout le dataset).")
+    ap.add_argument("--dataset_streaming_per_source", type=int, default=None,
+                    help="Charge N samples par source en streaming depuis le hub "
+                         "(utile pour reproduire limit_per_source sans full download).")
     ap.add_argument("--split", default="test", choices=["validation", "test"])
     ap.add_argument("--sources", nargs="*", default=None,
                     help="Filtre : sous-ensemble de sources.")
@@ -338,6 +363,7 @@ def main() -> int:
         subsample_seed=args.subsample_seed,
         track_energy=not args.no_energy_tracking,
         project_label=args.run_label,
+        country_iso=args.country_iso,
     )
 
     # ----- Snapshot agrégé ------------------------------------------------
