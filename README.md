@@ -351,11 +351,14 @@ models:
 Les entrées vLLM doivent rester opt-in pour ne pas casser le batch standard :
 ajoute `run_by_default: false`, puis lance-les avec `--label` ou `--group`.
 
-Sur RunPod, installe la version figée avant de lancer le smoke :
+Image RunPod prête pour le smoke vLLM :
 
 ```bash
-pip install "vllm==0.19.1"
+ghcr.io/thibault-garel/ilab_hackathon-resiliant_ai-dataset_unifi-benchmark:phil-vllm-backend-vllm
 ```
+
+Elle part de `vllm/vllm-openai:v0.19.1`. Si tu utilises une autre image,
+installe d'abord `pip install "vllm==0.19.1"`.
 
 ```yaml
 models:
@@ -374,7 +377,8 @@ models:
 Smoke explicite :
 
 ```bash
-python scripts/bench_all.py \
+cd /app
+python3 scripts/bench_all.py \
   --group vllm_smoke \
   --dataset_local /workspace/code/data/unified \
   --limit_per_source 2 \
