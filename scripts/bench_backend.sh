@@ -4,7 +4,7 @@ set -u
 BACKEND="${1:-}"
 if [ -z "$BACKEND" ]; then
     echo "Usage: bash scripts/bench_backend.sh vllm|llama_cpp [bench_all args]"
-    echo "Env: LABEL=... LIMIT=2 DATASET_LOCAL=... COUNTRY=CZE"
+    echo "Env: LABEL=... LIMIT=2 DATASET_LOCAL=... DATASET_HUB=... COUNTRY=CZE"
     exit 2
 fi
 shift || true
@@ -14,14 +14,14 @@ PYTHON_BIN="${PYTHON:-python3}"
 COUNTRY="${COUNTRY:-CZE}"
 LIMIT="${LIMIT:-2}"
 SUBSAMPLE_PCT="${SUBSAMPLE_PCT:-100}"
+DATASET_HUB="${DATASET_HUB:-ECE-ILAB/resilient-ai-unified}"
+STREAMING_TAKE="${STREAMING_TAKE:-64}"
 
 if [ -z "${DATASET_LOCAL:-}" ]; then
     if [ -d /workspace/code/data/unified ]; then
         DATASET_LOCAL=/workspace/code/data/unified
     elif [ -d /app/data/unified ]; then
         DATASET_LOCAL=/app/data/unified
-    else
-        DATASET_LOCAL=/workspace/code/data/unified
     fi
 fi
 
@@ -43,10 +43,17 @@ fi
 
 CMD=(
     "$PYTHON_BIN" "${PROJECT_ROOT}/scripts/bench_all.py"
-    --dataset_local "$DATASET_LOCAL"
     --subsample_pct "$SUBSAMPLE_PCT"
     --country_iso "$COUNTRY"
 )
+
+if [ -n "${DATASET_LOCAL:-}" ]; then
+    CMD+=(--dataset_local "$DATASET_LOCAL")
+    DATASET_DESC="$DATASET_LOCAL"
+else
+    CMD+=(--dataset_hub "$DATASET_HUB" --dataset_streaming_take "$STREAMING_TAKE")
+    DATASET_DESC="$DATASET_HUB (streaming_take=$STREAMING_TAKE)"
+fi
 
 case "$BACKEND" in
     vllm)
@@ -73,7 +80,7 @@ fi
 CMD+=("$@")
 
 echo "[bench_backend] backend=$BACKEND"
-echo "[bench_backend] dataset=$DATASET_LOCAL"
+echo "[bench_backend] dataset=$DATASET_DESC"
 echo "[bench_backend] cmd: ${CMD[*]}"
 cd "$PROJECT_ROOT"
 "${CMD[@]}"

@@ -380,7 +380,8 @@ Smoke explicite :
 cd /app
 python3 scripts/bench_all.py \
   --group vllm_smoke \
-  --dataset_local /workspace/code/data/unified \
+  --dataset_hub ECE-ILAB/resilient-ai-unified \
+  --dataset_streaming_take 64 \
   --limit_per_source 2 \
   --subsample_pct 100 \
   --country_iso CZE
@@ -395,6 +396,10 @@ cd /app
 bash scripts/bench_backend.sh vllm
 bash scripts/bench_backend.sh llama_cpp
 ```
+
+Si `data/unified` n'est pas présent sur le pod, le script lit seulement un
+petit bout du hub HF en streaming (`STREAMING_TAKE=64`) pour éviter de
+télécharger tout le dataset pendant un smoke.
 
 Par défaut le script lance un smoke `LIMIT=2`. Pour comparer :
 

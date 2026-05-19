@@ -97,6 +97,8 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
         cmd += ["--dataset_local", args.dataset_local]
     else:
         cmd += ["--dataset_hub", args.dataset_hub or defaults["dataset_hub"]]
+        if args.dataset_streaming_take is not None:
+            cmd += ["--dataset_streaming_take", str(args.dataset_streaming_take)]
 
     # Cap dur du nombre de samples par source (smoke test / itération rapide)
     if args.limit_per_source is not None:
@@ -192,6 +194,8 @@ def main() -> int:
     ap.add_argument("--dataset_local", default=None,
                     help="Charger un DatasetDict local (save_to_disk). "
                          "Prioritaire sur --dataset_hub si fourni.")
+    ap.add_argument("--dataset_streaming_take", type=int, default=None,
+                    help="Smoke hub: ne lit que les N premiers samples en streaming.")
     ap.add_argument("--split", default=None, choices=["validation", "test", None])
     ap.add_argument("--subsample_pct", type=float, default=None)
     ap.add_argument("--limit_per_source", type=int, default=None,

@@ -85,6 +85,19 @@ def _load_internal_dataset(args):
         dd = load_from_disk(args.dataset_local)
         return dd[args.split]
     if args.dataset_hub:
+        if args.dataset_streaming_take:
+            stream = load_dataset(args.dataset_hub, split=args.split, streaming=True)
+            rows = []
+            for i, row in enumerate(stream):
+                if i >= args.dataset_streaming_take:
+                    break
+                rows.append(row)
+            if not rows:
+                raise SystemExit(
+                    f"Aucun sample lu depuis {args.dataset_hub}/{args.split}."
+                )
+            print(f"[data] streaming hub: {len(rows)} samples chargés")
+            return rows
         return load_dataset(args.dataset_hub, split=args.split)
     return None
 
@@ -234,6 +247,9 @@ def main() -> int:
                     help="DatasetDict local (save_to_disk).")
     ap.add_argument("--dataset_hub", default=None,
                     help="HF Hub id (ex: Mathos34400/resilient-ai-unified).")
+    ap.add_argument("--dataset_streaming_take", type=int, default=None,
+                    help="Charge seulement les N premiers samples du hub en streaming "
+                         "(utile pour smoke Runpod sans télécharger tout le dataset).")
     ap.add_argument("--split", default="test", choices=["validation", "test"])
     ap.add_argument("--sources", nargs="*", default=None,
                     help="Filtre : sous-ensemble de sources.")
