@@ -81,24 +81,32 @@ from src.tracking.run_registry import (
 
 def _load_internal_dataset(args):
     from datasets import load_from_disk, load_dataset
-    if args.dataset_local:
-        dd = load_from_disk(args.dataset_local)
-        return dd[args.split]
-    if args.dataset_hub:
-        if args.dataset_streaming_take:
-            stream = load_dataset(args.dataset_hub, split=args.split, streaming=True)
-            rows = []
-            for i, row in enumerate(stream):
-                if i >= args.dataset_streaming_take:
-                    break
-                rows.append(row)
-            if not rows:
-                raise SystemExit(
-                    f"Aucun sample lu depuis {args.dataset_hub}/{args.split}."
-                )
-            print(f"[data] streaming hub: {len(rows)} samples chargés")
-            return rows
-        return load_dataset(args.dataset_hub, split=args.split)
+    try:
+        if args.dataset_local:
+            dd = load_from_disk(args.dataset_local)
+            return dd[args.split]
+        if args.dataset_hub:
+            if args.dataset_streaming_take:
+                stream = load_dataset(args.dataset_hub, split=args.split, streaming=True)
+                rows = []
+                for i, row in enumerate(stream):
+                    if i >= args.dataset_streaming_take:
+                        break
+                    rows.append(row)
+                if not rows:
+                    raise SystemExit(
+                        f"Aucun sample lu depuis {args.dataset_hub}/{args.split}."
+                    )
+                print(f"[data] streaming hub: {len(rows)} samples chargés")
+                return rows
+            return load_dataset(args.dataset_hub, split=args.split)
+    except Exception as exc:
+        if exc.__class__.__name__ == "DatasetNotFoundError":
+            raise SystemExit(
+                f"Dataset Hub inaccessible: {args.dataset_hub}. "
+                "Lance `hf auth login` ou exporte HF_TOKEN dans ce container."
+            )
+        raise
     return None
 
 
@@ -308,16 +316,17 @@ def main() -> int:
           f"split={args.split}")
     print("=" * 72)
 
-    # ----- Inference fn ---------------------------------------------------
-    gen_fn, model_id = _make_generate_fn(args)
-
-    # ----- Layer 1 : benchmark interne par-source -------------------------
+    # ----- Dataset --------------------------------------------------------
     print("\n" + "─" * 60)
     print("Benchmark interne par-source (avec tracking énergie)")
     print("─" * 60)
     ds = _load_internal_dataset(args)
     print(f"[data] {args.split}: {len(ds)} samples (avant subsample)")
 
+    # ----- Inference fn ---------------------------------------------------
+    gen_fn, model_id = _make_generate_fn(args)
+
+    # ----- Layer 1 : benchmark interne par-source -------------------------
     bench_result, per_source_snapshots = evaluate_model(
         ds,
         gen_fn,
