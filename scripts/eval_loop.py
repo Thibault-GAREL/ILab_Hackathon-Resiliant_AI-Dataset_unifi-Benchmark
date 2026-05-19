@@ -471,15 +471,15 @@ def main() -> int:
         print(f"  score/kWh       = {eff['score_per_kwh']:.4g}")
     print(f"  Wall time       = {report['wall_time_s']:.1f}s")
     print(f"  Backend         = {summary['energy']['backend']}")
-    cleanup = getattr(gen_fn, "close", None)
-    if callable(cleanup):
-        cleanup()
     if args.backend == "vllm":
-        # vLLM 0.19 peut crasher dans les finalizers après un run réussi.
+        # vLLM 0.19 peut crasher dans shutdown/finalizers après un run réussi.
         sys.stdout.flush()
         sys.stderr.flush()
         import os
         os._exit(0)
+    cleanup = getattr(gen_fn, "close", None)
+    if callable(cleanup):
+        cleanup()
     return 0
 
 
