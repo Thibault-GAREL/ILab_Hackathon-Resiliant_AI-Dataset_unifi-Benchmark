@@ -386,6 +386,30 @@ python3 scripts/bench_all.py \
   --country_iso CZE
 ```
 
+### Lancer un backend directement
+
+Pour les tests rapides côté modèles :
+
+```bash
+cd /app
+bash scripts/bench_backend.sh vllm
+bash scripts/bench_backend.sh llama_cpp
+```
+
+Par défaut le script lance un smoke `LIMIT=2`. Pour comparer :
+
+```bash
+LIMIT=20 bash scripts/bench_backend.sh vllm
+LIMIT=20 bash scripts/bench_backend.sh llama_cpp
+```
+
+Pour forcer un modèle précis du YAML :
+
+```bash
+LABEL=gemma4-e4b-vllm-fp8-kvfp8-soft140-t16 bash scripts/bench_backend.sh vllm
+LABEL=gemma4-e4b-gguf-iq4nl bash scripts/bench_backend.sh llama_cpp
+```
+
 ### Compatibilité formats
 
 | Format | Backend | Statut |
