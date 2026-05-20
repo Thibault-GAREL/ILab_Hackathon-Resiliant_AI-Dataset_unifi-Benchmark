@@ -315,6 +315,25 @@ models:
     model_family: gemma4
     notes: "axelbrons Q8_0"
 
+  # ---- Variantes spéciales axelbrons (suffixes -ALL et -v2) ---------------
+  - label: gemma4-e4b-axelbrons-q2k-all
+    backend: llama_cpp
+    gguf_repo: axelbrons/gemma-4-E4B-it-Q2_k-ALL
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q2_k variante ALL (probable repacked / imatrix etendu)"
+
+  - label: gemma4-e4b-axelbrons-q4km-v2
+    backend: llama_cpp
+    gguf_repo: axelbrons/gemma-4-E4B-it-Q4_K_M-v2
+    gguf_filename: "*.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "axelbrons Q4_K_M v2 (probable revision améliorée)"
+
 # =============================================================================
 # Hors scope :
 #   - MLX (mlx-community/*) : Apple Silicon uniquement, pas Runpod.
