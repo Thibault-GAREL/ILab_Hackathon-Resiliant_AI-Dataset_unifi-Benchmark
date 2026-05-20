@@ -65,3 +65,5 @@ htmlcov/
 
 # Logs
 *.log
+
+pass.txt

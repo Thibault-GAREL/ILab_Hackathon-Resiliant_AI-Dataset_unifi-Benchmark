@@ -79,6 +79,21 @@ from src.tracking.run_registry import (
     dump_run_artifacts,
 )
 
+DEFAULT_INTERNAL_SOURCES = {
+    "vqav2",
+    "docvqa",
+    "textvqa",
+    "mmmu",
+    "chartqa",
+    "ai2d",
+    "realworldqa",
+    "coco_captions",
+    "ok_vqa",
+    "scienceqa",
+    "infographicvqa",
+    "mathvista",
+}
+
 
 def _load_internal_dataset(args):
     from datasets import load_from_disk, load_dataset
@@ -90,7 +105,7 @@ def _load_internal_dataset(args):
             if args.dataset_streaming_per_source:
                 stream = load_dataset(args.dataset_hub, split=args.split, streaming=True)
                 target = args.dataset_streaming_per_source
-                wanted = set(args.sources or [])
+                wanted = set(args.sources or DEFAULT_INTERNAL_SOURCES)
                 buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
                 for row in stream:
                     src = row.get("source")
@@ -497,13 +512,27 @@ def main() -> int:
         print(f"  score/kWh       = {eff['score_per_kwh']:.4g}")
     print(f"  Wall time       = {report['wall_time_s']:.1f}s")
     print(f"  Backend         = {summary['energy']['backend']}")
+    cleanup = getattr(gen_fn, "close", None)
     if args.backend == "vllm":
         # vLLM 0.19 peut crasher dans shutdown/finalizers après un run réussi.
+        # On nettoie d'abord les enfants EngineCore pour que bench_all puisse
+        # enchaîner plusieurs variantes sur une seule L4.
+        if callable(cleanup):
+            try:
+                cleanup()
+            except Exception:
+                pass
         sys.stdout.flush()
         sys.stderr.flush()
         import os
+        import subprocess
+        subprocess.run(
+            ["pkill", "-P", str(os.getpid())],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         os._exit(0)
-    cleanup = getattr(gen_fn, "close", None)
     if callable(cleanup):
         cleanup()
     return 0

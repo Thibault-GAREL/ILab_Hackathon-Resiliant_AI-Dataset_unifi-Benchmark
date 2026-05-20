@@ -173,6 +173,25 @@ def _cleanup_model_cache(model: dict) -> None:
             print(f"   [cleanup] removed {path}")
 
 
+def _cleanup_vllm_processes() -> None:
+    """vLLM 0.19 peut laisser un EngineCore vivant après os._exit.
+
+    Sur une L4, ce process garde assez de VRAM pour faire échouer le modèle
+    suivant. Le kill est volontairement ciblé sur les commandes vLLM.
+    """
+    patterns = [
+        "VLLM::EngineCore",
+        "vllm/v1/engine/core.py",
+    ]
+    for pattern in patterns:
+        subprocess.run(
+            ["pkill", "-f", pattern],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true",
@@ -292,6 +311,9 @@ def main() -> int:
         except KeyboardInterrupt:
             print("\nInterruption utilisateur — arrêt.")
             return 130
+
+        if model.get("backend") == "vllm":
+            _cleanup_vllm_processes()
 
         # Cleanup cache HF du modèle qu'on vient d'évaluer (réussi ou pas)
         # pour libérer la place avant le suivant.
