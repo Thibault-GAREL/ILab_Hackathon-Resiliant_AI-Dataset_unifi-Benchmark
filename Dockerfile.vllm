@@ -1,0 +1,48 @@
+# =============================================================================
+# Dockerfile.vllm - image benchmark avec backend vLLM
+#
+# Base officielle vLLM 0.19.1.
+# =============================================================================
+FROM vllm/vllm-openai:v0.19.1
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    CODECARBON_LOG_LEVEL=error
+
+ENV HF_HOME=/workspace/hf-cache \
+    HF_HUB_CACHE=/workspace/hf-cache/hub \
+    TRANSFORMERS_CACHE=/workspace/hf-cache \
+    TMPDIR=/workspace/tmp \
+    PIP_CACHE_DIR=/workspace/pip-cache
+
+WORKDIR /app
+
+RUN mkdir -p /workspace/tmp /workspace/pip-cache /workspace/hf-cache/hub
+
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Deps benchmark uniquement, la stack vLLM vient de l'image de base.
+RUN python3 -m pip install \
+        "datasets>=2.20.0" \
+        "evaluate>=0.4.0" \
+        "nltk>=3.8" \
+        "rouge-score>=0.1.2" \
+        "scipy>=1.11" \
+        "numpy>=1.26" \
+        "codecarbon>=2.4.0" \
+        "nvidia-ml-py>=12.535" \
+        "psutil>=5.9" \
+        "tqdm>=4.66" \
+        "python-Levenshtein>=0.25" \
+        "PyYAML>=6.0" \
+        "Pillow>=10.0.0"
+
+COPY . .
+
+RUN chmod +x scripts/*.sh && \
+    python3 -c "import torch, transformers, vllm; print('torch', torch.__version__, 'cuda', torch.version.cuda); print('transformers', transformers.__version__); print('vllm', vllm.__version__); assert vllm.__version__ == '0.19.1', vllm.__version__"
+
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
+CMD ["sleep", "infinity"]

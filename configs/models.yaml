@@ -34,6 +34,95 @@ defaults:
   vllm_max_num_seqs: 1
   vllm_dtype: auto
   vllm_enforce_eager: false
+  vllm_seed: 42
+
+groups:
+  vllm_smoke:
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+
+  # Smoke vLLM court : contrôle BF16 + candidat runtime.
+  vllm_submission_candidate:
+    - gemma4-e4b-vllm-bf16-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+
+  # Fallback si soft140 degrade trop la qualité visuelle.
+  vllm_submission_fallback:
+    - gemma4-e4b-vllm-bf16-soft280-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
+
+  # Petite grille runtime vLLM.
+  vllm_runtime_grid:
+    - gemma4-e4b-vllm-bf16-soft140-t16
+    - gemma4-e4b-vllm-fp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
+
+  # Grille vLLM complète sans changer d'artefact HF.
+  vllm_full_grid:
+    - gemma4-e4b-vllm-bf16-soft140-t16
+    - gemma4-e4b-vllm-bf16-soft280-t16
+    - gemma4-e4b-vllm-fp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-soft280-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
+
+  # Probes : artefacts quantifiés HF chargés par vLLM si compatibles.
+  vllm_awq_probe:
+    - gemma4-e4b-vllm-ct-awq-int4-soft140-t16
+    - gemma4-e4b-vllm-ct-awq-int8-soft140-t16
+
+  # GGUF Axel sur L4, meme protocole que les runs Thibault/Axel existantes :
+  # 20 samples/source, 12 sources, max_new_tokens=32.
+  gguf_axel_l4:
+    - gemma4-e4b-axelbrons-q2k
+    - gemma4-e4b-axelbrons-q2k-all
+    - gemma4-e4b-axelbrons-q3ks
+    - gemma4-e4b-axelbrons-q3km
+    - gemma4-e4b-axelbrons-q3kl
+    - gemma4-e4b-axelbrons-q4ks
+    - gemma4-e4b-axelbrons-q4km
+    - gemma4-e4b-axelbrons-q4km-v2
+    - gemma4-e4b-axelbrons-q5ks
+    - gemma4-e4b-axelbrons-q5km
+    - gemma4-e4b-axelbrons-q6k
+    - gemma4-e4b-axelbrons-q8
+
+  # GGUF Bartowski/Thibault complet, pour comparer aux quantifications Axel.
+  gguf_bartowski_l4:
+    - gemma4-e4b-gguf-q2k
+    - gemma4-e4b-gguf-q3ks
+    - gemma4-e4b-gguf-q3km
+    - gemma4-e4b-gguf-q3kl
+    - gemma4-e4b-gguf-q4ks
+    - gemma4-e4b-gguf-q4km
+    - gemma4-e4b-gguf-q5ks
+    - gemma4-e4b-gguf-q5km
+    - gemma4-e4b-gguf-q6km
+    - gemma4-e4b-gguf-q8
+
+  gguf_l4_all:
+    - gemma4-e4b-gguf-q2k
+    - gemma4-e4b-gguf-q3ks
+    - gemma4-e4b-gguf-q3km
+    - gemma4-e4b-gguf-q3kl
+    - gemma4-e4b-gguf-q4ks
+    - gemma4-e4b-gguf-q4km
+    - gemma4-e4b-gguf-q5ks
+    - gemma4-e4b-gguf-q5km
+    - gemma4-e4b-gguf-q6km
+    - gemma4-e4b-gguf-q8
+    - gemma4-e4b-axelbrons-q2k
+    - gemma4-e4b-axelbrons-q2k-all
+    - gemma4-e4b-axelbrons-q3ks
+    - gemma4-e4b-axelbrons-q3km
+    - gemma4-e4b-axelbrons-q3kl
+    - gemma4-e4b-axelbrons-q4ks
+    - gemma4-e4b-axelbrons-q4km
+    - gemma4-e4b-axelbrons-q4km-v2
+    - gemma4-e4b-axelbrons-q5ks
+    - gemma4-e4b-axelbrons-q5km
+    - gemma4-e4b-axelbrons-q6k
+    - gemma4-e4b-axelbrons-q8
 
 models:
   # =========================================================================
@@ -50,13 +139,13 @@ models:
     notes: "Gemma 4 E2B-it BF16 — borne basse, 2x plus petit"
 
   # ---- AWQ (compresseur GPU-natif via compressed-tensors) -----------------
-  # Note : Chunity/gemma-4-E4B-it-AWQ-4bit retire car necessite gptqmodel,
-  # qui tire torchao 0.17 et force torch==2.12.0 (CUDA 13) en cassant tout
-  # le reste. Si besoin un jour, le tester dans un venv separe.
+  # Chunity/gemma-4-E4B-it-AWQ-4bit retire : gptqmodel tire torchao 0.17,
+  # qui force torch==2.12.0/CUDA 13 et casse la stack CUDA 12.1 llama.cpp.
+  # Si besoin, le tester dans un venv separe ou une image dediee.
   # - label: gemma4-e4b-awq-chunity
   #   model_path: Chunity/gemma-4-E4B-it-AWQ-4bit
   #   extras: gptqmodel
-  #   notes: "AWQ 4-bit Chunity (necessite venv separe avec torch 2.12+CUDA 13)"
+  #   notes: "AWQ 4-bit Chunity (necessite venv separe)"
 
   - label: gemma4-e4b-awq-cyankiwi-int4
     model_path: cyankiwi/gemma-4-E4B-it-AWQ-INT4
@@ -70,97 +159,99 @@ models:
 
 
   # =========================================================================
-  # Backend vLLM — DÉSACTIVÉ (commenté en attendant l'implémentation)
-  #
-  # ⚠️ Le backend vLLM n'est pas encore implémenté côté code :
-  #   - src/models/vllm_backend.py n'existe pas
-  #   - eval_loop.py route uniquement entre transformers et llama_cpp
-  # → Décommenter les modèles ci-dessous UNIQUEMENT après avoir codé le
-  #   backend (vLLM offline LLM engine + multimodal pour Gemma 4).
-  #
-  # Grilles prévues (à activer plus tard) :
-  #   - BF16 : référence qualité/énergie
-  #   - FP8 weights : quantification runtime vLLM
-  #   - FP8 weights + KV FP8 : poids + cache KV
-  #   - soft140 / soft280 : budget tokens visuels Gemma 4
+  # Backend vLLM — smoke + candidat runtime
   # =========================================================================
 
-  # # ---- E4B : références BF16 ---------------------------------------------
-  # - label: gemma4-e4b-vllm-bf16-soft140-t16
+  - label: gemma4-e4b-vllm-bf16-soft140-t16
+    backend: vllm
+    run_by_default: false
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    notes: "vLLM BF16, soft140, t16 : baseline énergie"
+
+  - label: gemma4-e4b-vllm-bf16-soft280-t16
+    backend: vllm
+    run_by_default: false
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 280
+    vllm_max_model_len: 2048
+    notes: "vLLM BF16, soft280, t16 : baseline qualité"
+
+  # ---- E4B : FP8 weights --------------------------------------------------
+  - label: gemma4-e4b-vllm-fp8-soft140-t16
+    backend: vllm
+    run_by_default: false
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    notes: "vLLM FP8 weights, soft140, t16"
+
+  - label: gemma4-e4b-vllm-fp8-soft280-t16
+    backend: vllm
+    run_by_default: false
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 280
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    notes: "vLLM FP8 weights, soft280, t16"
+
+  # ---- E4B : FP8 weights + KV FP8 ----------------------------------------
+  - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+    backend: vllm
+    run_by_default: false
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    notes: "CANDIDAT Round 1/2 : vLLM FP8 weights + KV FP8, soft140, t16"
+
+  - label: gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
+    backend: vllm
+    run_by_default: false
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 280
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    notes: "vLLM FP8 weights + KV FP8, soft280, t16"
+
+  # ---- E4B : artefacts HF quantifiés chargés dans vLLM -------------------
+  # - label: gemma4-e4b-vllm-awq-chunity-soft140-t16
   #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
+  #   run_by_default: false
+  #   model_path: Chunity/gemma-4-E4B-it-AWQ-4bit
   #   max_new_tokens: 16
   #   vllm_max_soft_tokens: 140
   #   vllm_max_model_len: 2048
-  #   notes: "vLLM BF16, soft140, t16 : baseline énergie"
-  #
-  # - label: gemma4-e4b-vllm-bf16-soft280-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 280
-  #   vllm_max_model_len: 2048
-  #   notes: "vLLM BF16, soft280, t16 : baseline qualité"
-  #
-  # # ---- E4B : FP8 weights --------------------------------------------------
-  # - label: gemma4-e4b-vllm-fp8-soft140-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 140
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   notes: "vLLM FP8 weights, soft140, t16"
-  #
-  # - label: gemma4-e4b-vllm-fp8-soft280-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 280
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   notes: "vLLM FP8 weights, soft280, t16"
-  #
-  # # ---- E4B : FP8 weights + KV FP8 ----------------------------------------
-  # - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 140
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   vllm_kv_cache_dtype: fp8
-  #   notes: "vLLM FP8 weights + KV FP8, soft140, t16"
-  #
-  # - label: gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 280
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   vllm_kv_cache_dtype: fp8
-  #   notes: "vLLM FP8 weights + KV FP8, soft280, t16"
-  #
-  # # ---- E4B : decode plus long --------------------------------------------
-  # - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t32
-  #   backend: vllm
-  #   model_path: google/gemma-4-E4B-it
-  #   max_new_tokens: 32
-  #   vllm_max_soft_tokens: 140
-  #   vllm_max_model_len: 2048
-  #   vllm_quantization: fp8
-  #   vllm_kv_cache_dtype: fp8
-  #   notes: "vLLM FP8 weights + KV FP8, soft140, t32"
-  #
-  # # ---- E2B : borne basse --------------------------------------------------
-  # - label: gemma4-e2b-vllm-bf16-soft140-t16
-  #   backend: vllm
-  #   model_path: google/gemma-4-E2B-it
-  #   max_new_tokens: 16
-  #   vllm_max_soft_tokens: 140
-  #   vllm_max_model_len: 2048
-  #   notes: "vLLM E2B BF16, soft140, t16 : borne basse taille"
+  #   vllm_quantization: awq
+  #   notes: "Probe vLLM AWQ 4-bit Chunity, soft140, t16"
+
+  - label: gemma4-e4b-vllm-ct-awq-int4-soft140-t16
+    backend: vllm
+    run_by_default: false
+    model_path: cyankiwi/gemma-4-E4B-it-AWQ-INT4
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    notes: "Probe vLLM compressed-tensors AWQ INT4 cyankiwi, soft140, t16"
+
+  - label: gemma4-e4b-vllm-ct-awq-int8-soft140-t16
+    backend: vllm
+    run_by_default: false
+    model_path: cyankiwi/gemma-4-E4B-it-AWQ-INT8
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    notes: "Probe vLLM compressed-tensors AWQ INT8 cyankiwi, soft140, t16"
 
   # =========================================================================
   # Backend llama_cpp — GGUF (quantifications classiques bartowski imatrix)
@@ -174,7 +265,52 @@ models:
   # llama-cpp-python le supporte.
   # =========================================================================
 
-  # ---- E4B : grille complète des 4 quantifications classiques -------------
+  # ---- E4B : grille GGUF Bartowski/Thibault -------------------------------
+  - label: gemma4-e4b-gguf-q2k
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q2_K.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q2_K Bartowski — quantification tres agressive"
+
+  - label: gemma4-e4b-gguf-q3ks
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q3_K_S.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q3_K_S Bartowski"
+
+  - label: gemma4-e4b-gguf-q3km
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q3_K_M.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q3_K_M Bartowski"
+
+  - label: gemma4-e4b-gguf-q3kl
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q3_K_L.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q3_K_L Bartowski"
+
+  - label: gemma4-e4b-gguf-q4ks
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q4_K_S.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q4_K_S Bartowski"
+
   - label: gemma4-e4b-gguf-q8
     backend: llama_cpp
     gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
@@ -202,6 +338,24 @@ models:
     model_family: gemma4
     notes: "GGUF Q4_K_M (~5 GB) — référence 4-bit de la communauté"
 
+  - label: gemma4-e4b-gguf-q5ks
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q5_K_S.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q5_K_S Bartowski"
+
+  - label: gemma4-e4b-gguf-q5km
+    backend: llama_cpp
+    gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    gguf_filename: "*Q5_K_M.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "GGUF Q5_K_M Bartowski"
+
   - label: gemma4-e4b-gguf-iq4nl
     backend: llama_cpp
     gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF
@@ -210,6 +364,118 @@ models:
     mmproj_filename: "mmproj-*f16.gguf"
     model_family: gemma4
     notes: "GGUF IQ4_NL (~5 GB) — imatrix non-linear, meilleur qualité/taille"
+
+  # ---- E4B : GGUF AxelBrons ---------------------------------------------
+  # Les repos Axel contiennent le .gguf principal seulement, sauf Q4_K_M-v2
+  # qui embarque aussi la config HF. Pour llama.cpp, on reutilise le mmproj
+  # Bartowski de la meme famille Gemma 4 E4B-it.
+  - label: gemma4-e4b-axelbrons-q2k
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q2_K
+    gguf_filename: "gemma-4-q2_k.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q2_K"
+
+  - label: gemma4-e4b-axelbrons-q2k-all
+    backend: llama_cpp
+    gguf_repo: axelbrons/gemma-4-E4B-it-Q2_k-ALL
+    gguf_filename: "gemma-4-q2_k-ALL.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q2_K ALL"
+
+  - label: gemma4-e4b-axelbrons-q3ks
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q3_K_S
+    gguf_filename: "gemma-4-q3_k_s.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q3_K_S"
+
+  - label: gemma4-e4b-axelbrons-q3km
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q3_K_M
+    gguf_filename: "gemma-4-q3_k_m.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q3_K_M"
+
+  - label: gemma4-e4b-axelbrons-q3kl
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q3_K_L
+    gguf_filename: "gemma-4-q3_k_l.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q3_K_L"
+
+  - label: gemma4-e4b-axelbrons-q4ks
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q4_K_S
+    gguf_filename: "gemma-4-q4_k_s.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q4_K_S"
+
+  - label: gemma4-e4b-axelbrons-q4km
+    backend: llama_cpp
+    gguf_repo: axelbrons/gemma-4-E4B-it-q4_k_m
+    gguf_filename: "gemma-4-q4_k_m.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q4_K_M"
+
+  - label: gemma4-e4b-axelbrons-q4km-v2
+    backend: llama_cpp
+    gguf_repo: axelbrons/gemma-4-E4B-it-Q4_K_M-v2
+    gguf_filename: "gemma-4-q4_k_m.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q4_K_M v2 avec config HF"
+
+  - label: gemma4-e4b-axelbrons-q5ks
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q5_K_S
+    gguf_filename: "gemma-4-q5_k_s.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q5_K_S"
+
+  - label: gemma4-e4b-axelbrons-q5km
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q5_K_M
+    gguf_filename: "gemma-4-q5_k_m.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q5_K_M"
+
+  - label: gemma4-e4b-axelbrons-q6k
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q6_K
+    gguf_filename: "gemma-4-q6_k.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q6_K"
+
+  - label: gemma4-e4b-axelbrons-q8
+    backend: llama_cpp
+    gguf_repo: axelbrons/Gemma-4-E4B-it-Q8_0
+    gguf_filename: "gemma-4-q8_0.gguf"
+    mmproj_repo: bartowski/google_gemma-4-E4B-it-GGUF
+    mmproj_filename: "mmproj-*f16.gguf"
+    model_family: gemma4
+    notes: "AxelBrons GGUF Q8_0"
 
   # ---- E2B : borne basse en GGUF (juste Q4_K_M pour la comparaison) -------
   - label: gemma4-e2b-gguf-q4km

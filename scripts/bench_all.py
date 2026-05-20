@@ -17,6 +17,9 @@ Usage (depuis la racine du projet) :
     # Lancer un sous-ensemble par labels
     python scripts/bench_all.py --label gemma4-e4b-bf16 --label gemma4-e4b-bnb4
 
+    # Lancer un groupe YAML (ex: smoke vLLM)
+    python scripts/bench_all.py --group vllm_smoke
+
     # Override du subsample (full split avant soumission)
     python scripts/bench_all.py --all --subsample_pct 100
 
@@ -58,6 +61,15 @@ def _print_model_table(models: list[dict]) -> None:
         print(f"{m['label']:<28} {backend:<11} {extras:<14} {model_str}")
 
 
+def _print_groups(groups: dict[str, list[str]]) -> None:
+    if not groups:
+        return
+    print("\nGROUPS")
+    print("-" * 100)
+    for name, labels in groups.items():
+        print(f"{name:<32} {', '.join(labels)}")
+
+
 def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
     label = model["label"]
     out_path = REPORTS_DIR / f"{label}.json"
@@ -71,7 +83,10 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
         "--subsample_pct", str(args.subsample_pct or defaults["subsample_pct"]),
         "--country_iso", args.country_iso or defaults["country_iso"],
         "--device", defaults.get("device", "cuda"),
-        "--max_new_tokens", str(defaults.get("max_new_tokens", 32)),
+        "--max_new_tokens", str(model.get("max_new_tokens", defaults.get("max_new_tokens", 32))),
+        "--temperature", str(model.get("temperature", defaults.get("temperature", 1.0))),
+        "--top_p", str(model.get("top_p", defaults.get("top_p", 0.95))),
+        "--top_k", str(model.get("top_k", defaults.get("top_k", 64))),
         "--run_label", label,
         "--notes", model.get("notes", ""),
         "--out", str(out_path),
@@ -82,6 +97,10 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
         cmd += ["--dataset_local", args.dataset_local]
     else:
         cmd += ["--dataset_hub", args.dataset_hub or defaults["dataset_hub"]]
+        if args.dataset_streaming_per_source is not None:
+            cmd += ["--dataset_streaming_per_source", str(args.dataset_streaming_per_source)]
+        if args.dataset_streaming_take is not None:
+            cmd += ["--dataset_streaming_take", str(args.dataset_streaming_take)]
 
     # Cap dur du nombre de samples par source (smoke test / itération rapide)
     if args.limit_per_source is not None:
@@ -100,6 +119,27 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
                 "--mmproj_repo", model["mmproj_repo"],
                 "--mmproj_filename", model["mmproj_filename"],
             ]
+    elif backend == "vllm":
+        cmd += ["--model_path", model["model_path"]]
+        vllm_map = {
+            "vllm_tensor_parallel_size": "--vllm_tensor_parallel_size",
+            "vllm_max_model_len": "--vllm_max_model_len",
+            "vllm_gpu_memory_utilization": "--vllm_gpu_memory_utilization",
+            "vllm_max_num_seqs": "--vllm_max_num_seqs",
+            "vllm_dtype": "--vllm_dtype",
+            "vllm_quantization": "--vllm_quantization",
+            "vllm_kv_cache_dtype": "--vllm_kv_cache_dtype",
+            "vllm_max_soft_tokens": "--vllm_max_soft_tokens",
+            "vllm_seed": "--vllm_seed",
+        }
+        for key, flag in vllm_map.items():
+            value = model.get(key, defaults.get(key))
+            if value is not None:
+                cmd += [flag, str(value)]
+        if model.get("vllm_enforce_eager", defaults.get("vllm_enforce_eager", False)):
+            cmd += ["--vllm_enforce_eager"]
+        if model.get("revision"):
+            cmd += ["--revision", model["revision"]]
     else:
         cmd += ["--model_path", model["model_path"]]
 
@@ -133,12 +173,34 @@ def _cleanup_model_cache(model: dict) -> None:
             print(f"   [cleanup] removed {path}")
 
 
+def _cleanup_vllm_processes() -> None:
+    """vLLM 0.19 peut laisser un EngineCore vivant après os._exit.
+
+    Sur une L4, ce process garde assez de VRAM pour faire échouer le modèle
+    suivant. Le kill est volontairement ciblé sur les commandes vLLM.
+    """
+    patterns = [
+        "VLLM::EngineCore",
+        "vllm/v1/engine/core.py",
+    ]
+    for pattern in patterns:
+        subprocess.run(
+            ["pkill", "-f", pattern],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--list", action="store_true",
                     help="Lister les modèles disponibles puis quitter.")
     ap.add_argument("--label", action="append", default=[],
                     help="Lancer uniquement le(s) modèle(s) avec ce label "
+                         "(répétable). Mutex avec --all.")
+    ap.add_argument("--group", action="append", default=[],
+                    help="Lancer un groupe défini dans configs/models.yaml "
                          "(répétable). Mutex avec --all.")
     ap.add_argument("--all", action="store_true",
                     help="Lancer tous les modèles du YAML.")
@@ -153,6 +215,10 @@ def main() -> int:
     ap.add_argument("--dataset_local", default=None,
                     help="Charger un DatasetDict local (save_to_disk). "
                          "Prioritaire sur --dataset_hub si fourni.")
+    ap.add_argument("--dataset_streaming_take", type=int, default=None,
+                    help="Smoke hub: ne lit que les N premiers samples en streaming.")
+    ap.add_argument("--dataset_streaming_per_source", type=int, default=None,
+                    help="Lit N samples par source en streaming depuis le hub.")
     ap.add_argument("--split", default=None, choices=["validation", "test", None])
     ap.add_argument("--subsample_pct", type=float, default=None)
     ap.add_argument("--limit_per_source", type=int, default=None,
@@ -168,19 +234,21 @@ def main() -> int:
     cfg = load_config()
     models = cfg["models"]
     defaults = cfg["defaults"]
+    groups = cfg.get("groups", {})
 
     if args.list:
         _print_model_table(models)
+        _print_groups(groups)
         return 0
 
-    if not args.all and not args.label:
-        ap.error("--all ou --label requis (ou --list pour voir les options).")
-    if args.all and args.label:
-        ap.error("--all et --label sont mutuellement exclusifs.")
+    if not args.all and not args.label and not args.group:
+        ap.error("--all, --label ou --group requis (ou --list pour voir les options).")
+    if args.all and (args.label or args.group):
+        ap.error("--all est mutuellement exclusif avec --label / --group.")
 
     if args.all:
-        selected = models
-    else:
+        selected = [m for m in models if m.get("run_by_default", True)]
+    elif args.label:
         by_label = {m["label"]: m for m in models}
         unknown = [lab for lab in args.label if lab not in by_label]
         if unknown:
@@ -189,6 +257,24 @@ def main() -> int:
                 f"Utiliser --list pour voir les options disponibles."
             )
         selected = [by_label[lab] for lab in args.label]
+    else:
+        by_label = {m["label"]: m for m in models}
+        unknown_groups = [name for name in args.group if name not in groups]
+        if unknown_groups:
+            raise SystemExit(
+                f"Groupe(s) inconnu(s) : {unknown_groups}. "
+                f"Utiliser --list pour voir les groupes disponibles."
+            )
+        labels: list[str] = []
+        for name in args.group:
+            labels.extend(groups[name])
+        unknown_labels = [lab for lab in labels if lab not in by_label]
+        if unknown_labels:
+            raise SystemExit(
+                f"Label(s) de groupe inconnu(s) : {unknown_labels}. "
+                "Corriger configs/models.yaml."
+            )
+        selected = [by_label[lab] for lab in dict.fromkeys(labels)]
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -225,6 +311,9 @@ def main() -> int:
         except KeyboardInterrupt:
             print("\nInterruption utilisateur — arrêt.")
             return 130
+
+        if model.get("backend") == "vllm":
+            _cleanup_vllm_processes()
 
         # Cleanup cache HF du modèle qu'on vient d'évaluer (réussi ou pas)
         # pour libérer la place avant le suivant.

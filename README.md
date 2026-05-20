@@ -517,6 +517,75 @@ models:
     notes: "GGUF Q4_K_M via llama.cpp"
 ```
 
+### Backend `vllm` (HF / vLLM offline)
+
+Les entrées vLLM doivent rester opt-in pour ne pas casser le batch standard :
+ajoute `run_by_default: false`, puis lance-les avec `--label` ou `--group`.
+
+Image RunPod prête pour le smoke vLLM :
+
+```bash
+ghcr.io/thibault-garel/ilab_hackathon-resiliant_ai-dataset_unifi-benchmark:phil-vllm-backend-vllm
+```
+
+Elle part de `vllm/vllm-openai:v0.19.1`. Si tu utilises une autre image,
+installe d'abord `pip install "vllm==0.19.1"`.
+
+```yaml
+models:
+  - label: mon-vllm-fp8-soft140
+    backend: vllm
+    run_by_default: false
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    notes: "vLLM FP8 + KV FP8, soft140"
+```
+
+Smoke explicite :
+
+```bash
+cd /app
+python3 scripts/bench_all.py \
+  --group vllm_smoke \
+  --dataset_hub ECE-ILAB/resilient-ai-unified \
+  --dataset_streaming_take 64 \
+  --limit_per_source 2 \
+  --subsample_pct 100 \
+  --country_iso CZE
+```
+
+### Lancer un backend directement
+
+Pour les tests rapides côté modèles :
+
+```bash
+cd /app
+bash scripts/bench_backend.sh vllm
+bash scripts/bench_backend.sh llama_cpp
+```
+
+Si `data/unified` n'est pas présent sur le pod, le script lit seulement un
+petit bout du hub HF en streaming (`STREAMING_TAKE=64`) pour éviter de
+télécharger tout le dataset pendant un smoke.
+
+Par défaut le script lance un smoke `LIMIT=2`. Pour comparer :
+
+```bash
+LIMIT=20 bash scripts/bench_backend.sh vllm
+LIMIT=20 bash scripts/bench_backend.sh llama_cpp
+```
+
+Pour forcer un modèle précis du YAML :
+
+```bash
+LABEL=gemma4-e4b-vllm-fp8-kvfp8-soft140-t16 bash scripts/bench_backend.sh vllm
+LABEL=gemma4-e4b-gguf-iq4nl bash scripts/bench_backend.sh llama_cpp
+```
+
 ### Compatibilité formats
 
 | Format | Backend | Statut |
@@ -524,6 +593,7 @@ models:
 | Safetensors BF16 (Google officiel) | `transformers` | ✅ Stable |
 | bitsandbytes 4-bit (`*-bnb-4bit`) | `transformers` + `bitsandbytes` | ✅ Stable |
 | AWQ (`*-AWQ-4bit`) | `transformers` + `autoawq` | ✅ Stable |
+| Safetensors vLLM FP8 / KV FP8 | `vllm` | ⚠️ Opt-in smoke |
 | GGUF imatrix (bartowski Q*/IQ*) | `llama_cpp` | ⚠️ Expérimental |
 | GGUF Dynamic (unsloth UD-*) | `llama_cpp` | ⚠️ Expérimental |
 | MLX | – | ❌ Apple Silicon only |

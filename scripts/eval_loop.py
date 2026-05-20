@@ -53,6 +53,7 @@ import argparse
 import json
 import sys
 import time
+from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -78,14 +79,71 @@ from src.tracking.run_registry import (
     dump_run_artifacts,
 )
 
+DEFAULT_INTERNAL_SOURCES = {
+    "vqav2",
+    "docvqa",
+    "textvqa",
+    "mmmu",
+    "chartqa",
+    "ai2d",
+    "realworldqa",
+    "coco_captions",
+    "ok_vqa",
+    "scienceqa",
+    "infographicvqa",
+    "mathvista",
+}
+
 
 def _load_internal_dataset(args):
     from datasets import load_from_disk, load_dataset
-    if args.dataset_local:
-        dd = load_from_disk(args.dataset_local)
-        return dd[args.split]
-    if args.dataset_hub:
-        return load_dataset(args.dataset_hub, split=args.split)
+    try:
+        if args.dataset_local:
+            dd = load_from_disk(args.dataset_local)
+            return dd[args.split]
+        if args.dataset_hub:
+            if args.dataset_streaming_per_source:
+                stream = load_dataset(args.dataset_hub, split=args.split, streaming=True)
+                target = args.dataset_streaming_per_source
+                wanted = set(args.sources or DEFAULT_INTERNAL_SOURCES)
+                buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+                for row in stream:
+                    src = row.get("source")
+                    if wanted and src not in wanted:
+                        continue
+                    if len(buckets[src]) < target:
+                        buckets[src].append(row)
+                    if wanted and all(len(buckets[src]) >= target for src in wanted):
+                        break
+                rows = [row for src in sorted(buckets) for row in buckets[src]]
+                if not rows:
+                    raise SystemExit(
+                        f"Aucun sample lu depuis {args.dataset_hub}/{args.split}."
+                    )
+                counts = ", ".join(f"{src}={len(rows)}" for src, rows in sorted(buckets.items()))
+                print(f"[data] streaming hub par-source: {counts}")
+                return rows
+            if args.dataset_streaming_take:
+                stream = load_dataset(args.dataset_hub, split=args.split, streaming=True)
+                rows = []
+                for i, row in enumerate(stream):
+                    if i >= args.dataset_streaming_take:
+                        break
+                    rows.append(row)
+                if not rows:
+                    raise SystemExit(
+                        f"Aucun sample lu depuis {args.dataset_hub}/{args.split}."
+                    )
+                print(f"[data] streaming hub: {len(rows)} samples chargés")
+                return rows
+            return load_dataset(args.dataset_hub, split=args.split)
+    except Exception as exc:
+        if exc.__class__.__name__ == "DatasetNotFoundError":
+            raise SystemExit(
+                f"Dataset Hub inaccessible: {args.dataset_hub}. "
+                "Lance `hf auth login` ou exporte HF_TOKEN dans ce container."
+            )
+        raise
     return None
 
 
@@ -95,7 +153,31 @@ def _make_generate_fn(args):
     if args.mode == "constant":
         return constant_generate_fn(args.constant_answer), f"constant:{args.constant_answer}"
 
-    # real — route entre les backends transformers et llama-cpp-python
+    # real — dispatch backend
+    if args.backend == "vllm":
+        if not args.model_path:
+            raise SystemExit("--model_path requis en mode real avec backend vllm.")
+        from src.models.vllm_backend import make_vllm_generate_fn
+        gen_fn = make_vllm_generate_fn(
+            model_path=args.model_path,
+            max_new_tokens=args.max_new_tokens,
+            tensor_parallel_size=args.vllm_tensor_parallel_size,
+            max_model_len=args.vllm_max_model_len,
+            gpu_memory_utilization=args.vllm_gpu_memory_utilization,
+            max_num_seqs=args.vllm_max_num_seqs,
+            dtype=args.vllm_dtype,
+            quantization=args.vllm_quantization,
+            kv_cache_dtype=args.vllm_kv_cache_dtype,
+            max_soft_tokens=args.vllm_max_soft_tokens,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            top_k=args.top_k,
+            enforce_eager=args.vllm_enforce_eager,
+            revision=args.revision,
+            seed=args.vllm_seed,
+        )
+        return gen_fn, args.model_path
+
     if args.backend == "llama_cpp":
         if not args.gguf_repo or not args.gguf_filename:
             raise SystemExit(
@@ -150,15 +232,24 @@ def main() -> int:
 
     # ----- Modèle ---------------------------------------------------------
     ap.add_argument("--mode", choices=["real", "oracle", "constant"], default="real")
-    ap.add_argument("--backend", choices=["transformers", "llama_cpp"],
+    ap.add_argument("--backend", choices=["transformers", "llama_cpp", "vllm"],
                     default="transformers",
                     help="Backend d'inférence. transformers = HF safetensors / "
-                         "bnb-4bit / AWQ. llama_cpp = GGUF via llama-cpp-python.")
+                         "bnb-4bit / AWQ. llama_cpp = GGUF via llama-cpp-python. "
+                         "vllm = serveur/offline vLLM pour safetensors compatibles.")
     ap.add_argument("--model_path", default=None,
                     help="Repo HF ou chemin local — requis si backend=transformers.")
     ap.add_argument("--constant_answer", default="unknown")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--max_new_tokens", type=int, default=32)
+    ap.add_argument("--temperature", type=float, default=1.0,
+                    help="Sampling temperature, surtout utilisé par vLLM.")
+    ap.add_argument("--top_p", type=float, default=0.95,
+                    help="top_p sampling, surtout utilisé par vLLM.")
+    ap.add_argument("--top_k", type=int, default=64,
+                    help="top_k sampling, surtout utilisé par vLLM.")
+    ap.add_argument("--revision", default=None,
+                    help="Révision HF optionnelle pour les backends qui la supportent.")
 
     # ----- Backend llama-cpp-python (GGUF) -------------------------------
     ap.add_argument("--gguf_repo", default=None,
@@ -179,11 +270,34 @@ def main() -> int:
     ap.add_argument("--n_ctx", type=int, default=2048,
                     help="Taille du contexte llama.cpp.")
 
+    # ----- Backend vLLM ---------------------------------------------------
+    ap.add_argument("--vllm_tensor_parallel_size", type=int, default=1)
+    ap.add_argument("--vllm_max_model_len", type=int, default=2048)
+    ap.add_argument("--vllm_gpu_memory_utilization", type=float, default=0.90)
+    ap.add_argument("--vllm_max_num_seqs", type=int, default=1)
+    ap.add_argument("--vllm_dtype", default="auto")
+    ap.add_argument("--vllm_quantization", default=None,
+                    help="Ex: fp8, modelopt, awq selon support vLLM.")
+    ap.add_argument("--vllm_kv_cache_dtype", default=None,
+                    help="Ex: fp8 pour KV cache quantifié.")
+    ap.add_argument("--vllm_max_soft_tokens", type=int, default=None,
+                    help="Gemma4 image processor max_soft_tokens via mm_processor_kwargs.")
+    ap.add_argument("--vllm_enforce_eager", action="store_true", default=False)
+    ap.add_argument("--vllm_no_enforce_eager", dest="vllm_enforce_eager", action="store_false")
+    ap.add_argument("--vllm_seed", type=int, default=42,
+                    help="Seed sampling vLLM quand supporté par la version installée.")
+
     # ----- Dataset interne ------------------------------------------------
     ap.add_argument("--dataset_local", default=None,
                     help="DatasetDict local (save_to_disk).")
     ap.add_argument("--dataset_hub", default=None,
                     help="HF Hub id (ex: Mathos34400/resilient-ai-unified).")
+    ap.add_argument("--dataset_streaming_take", type=int, default=None,
+                    help="Charge seulement les N premiers samples du hub en streaming "
+                         "(utile pour smoke Runpod sans télécharger tout le dataset).")
+    ap.add_argument("--dataset_streaming_per_source", type=int, default=None,
+                    help="Charge N samples par source en streaming depuis le hub "
+                         "(utile pour reproduire limit_per_source sans full download).")
     ap.add_argument("--split", default="test", choices=["validation", "test"])
     ap.add_argument("--sources", nargs="*", default=None,
                     help="Filtre : sous-ensemble de sources.")
@@ -242,16 +356,17 @@ def main() -> int:
           f"split={args.split}")
     print("=" * 72)
 
-    # ----- Inference fn ---------------------------------------------------
-    gen_fn, model_id = _make_generate_fn(args)
-
-    # ----- Layer 1 : benchmark interne par-source -------------------------
+    # ----- Dataset --------------------------------------------------------
     print("\n" + "─" * 60)
     print("Benchmark interne par-source (avec tracking énergie)")
     print("─" * 60)
     ds = _load_internal_dataset(args)
     print(f"[data] {args.split}: {len(ds)} samples (avant subsample)")
 
+    # ----- Inference fn ---------------------------------------------------
+    gen_fn, model_id = _make_generate_fn(args)
+
+    # ----- Layer 1 : benchmark interne par-source -------------------------
     bench_result, per_source_snapshots = evaluate_model(
         ds,
         gen_fn,
@@ -263,6 +378,7 @@ def main() -> int:
         subsample_seed=args.subsample_seed,
         track_energy=not args.no_energy_tracking,
         project_label=args.run_label,
+        country_iso=args.country_iso,
     )
 
     # ----- Snapshot agrégé ------------------------------------------------
@@ -296,6 +412,23 @@ def main() -> int:
         "model_path": args.model_path,
         "device": args.device,
         "max_new_tokens": args.max_new_tokens,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "top_k": args.top_k,
+        "backend": args.backend,
+        "revision": args.revision,
+        "vllm": {
+            "tensor_parallel_size": args.vllm_tensor_parallel_size,
+            "max_model_len": args.vllm_max_model_len,
+            "gpu_memory_utilization": args.vllm_gpu_memory_utilization,
+            "max_num_seqs": args.vllm_max_num_seqs,
+            "dtype": args.vllm_dtype,
+            "quantization": args.vllm_quantization,
+            "kv_cache_dtype": args.vllm_kv_cache_dtype,
+            "max_soft_tokens": args.vllm_max_soft_tokens,
+            "enforce_eager": args.vllm_enforce_eager,
+            "seed": args.vllm_seed,
+        },
         "split": args.split,
         "sources_filter": args.sources,
         "limit_per_source": args.limit_per_source,
@@ -379,6 +512,29 @@ def main() -> int:
         print(f"  score/kWh       = {eff['score_per_kwh']:.4g}")
     print(f"  Wall time       = {report['wall_time_s']:.1f}s")
     print(f"  Backend         = {summary['energy']['backend']}")
+    cleanup = getattr(gen_fn, "close", None)
+    if args.backend == "vllm":
+        # vLLM 0.19 peut crasher dans shutdown/finalizers après un run réussi.
+        # On nettoie d'abord les enfants EngineCore pour que bench_all puisse
+        # enchaîner plusieurs variantes sur une seule L4.
+        if callable(cleanup):
+            try:
+                cleanup()
+            except Exception:
+                pass
+        sys.stdout.flush()
+        sys.stderr.flush()
+        import os
+        import subprocess
+        subprocess.run(
+            ["pkill", "-P", str(os.getpid())],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        os._exit(0)
+    if callable(cleanup):
+        cleanup()
     return 0
 
 

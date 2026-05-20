@@ -72,7 +72,7 @@ RUN pip install -r requirements.txt
 #       Sans autoawq, certains AWQ legacy ne loadent pas.
 RUN pip install autoawq || echo "WARNING: autoawq install failed - AWQ legacy models will not load"
 
-# ⚠️ gptqmodel RETIRE : il tire torchao 0.17.0 comme dependance, qui a son
+# gptqmodel RETIRE : il tire torchao 0.17.0 comme dependance, qui a son
 # tour exige torch==2.12.0 (CUDA 13). Resultat : notre torch 2.5.1+cu121
 # est ecrase, llama-cpp-python (compile pour CUDA 12.1) ne marche plus, et
 # le sanity check echoue avec "operator torchvision::nms does not exist".
@@ -95,11 +95,10 @@ RUN python -c "import torch, torchvision; print('torch', torch.__version__, 'tor
 # ne sont pas dans LD_LIBRARY_PATH par défaut → on les ajoute via ldconfig
 # (méthode propre Linux qui survit aux nouvelles sessions).
 #
-# ⚠️ On NE TESTE PAS `from llama_cpp import Llama` au build : llama_cpp
-# charge libcuda.so.1 (pilote NVIDIA, pas le runtime), qui n'existe que
-# sur une machine avec GPU + NVIDIA Container Runtime. Sur GHA il n'y a
-# pas de driver → l'import planterait au build mais marche au runtime
-# sur Runpod.
+# On NE TESTE PAS `from llama_cpp import Llama` au build : llama_cpp charge
+# libcuda.so.1 (pilote NVIDIA, pas le runtime), qui n'existe que sur une
+# machine avec GPU + NVIDIA Container Runtime. Sur GHA il n'y a pas de driver,
+# donc l'import planterait au build mais marche au runtime sur Runpod.
 RUN find /opt/conda/lib/python3.11/site-packages/nvidia -name lib -type d > /etc/ld.so.conf.d/nvidia-conda.conf && ldconfig
 
 # ---- Couche light : code projet (relayered à chaque commit) -----------------
