@@ -68,12 +68,19 @@ RUN pip install --no-cache-dir \
 #    gptqmodel sont installes en best-effort apres (etapes risquees).
 RUN pip install -r requirements.txt
 
-# 3bis) autoawq et gptqmodel : best-effort (ces packages compilent du C/C++
-#       et peuvent echouer sur GHA ou des envs serres). En cas d'echec, le
-#       build continue sans eux ; seuls les modeles AWQ Chunity / certains
-#       formats AWQ legacy seront indisponibles a l'execution.
+# 3bis) autoawq : best-effort (compile du C++, peut echouer sur certains envs).
+#       Sans autoawq, certains AWQ legacy ne loadent pas.
 RUN pip install autoawq || echo "WARNING: autoawq install failed - AWQ legacy models will not load"
-RUN pip install gptqmodel || echo "WARNING: gptqmodel install failed - Chunity AWQ models will not load"
+
+# ⚠️ gptqmodel RETIRE : il tire torchao 0.17.0 comme dependance, qui a son
+# tour exige torch==2.12.0 (CUDA 13). Resultat : notre torch 2.5.1+cu121
+# est ecrase, llama-cpp-python (compile pour CUDA 12.1) ne marche plus, et
+# le sanity check echoue avec "operator torchvision::nms does not exist".
+# Sans gptqmodel, le modele Chunity/gemma-4-E4B-it-AWQ-4bit ne loadera pas
+# au runtime, mais tous les autres modeles (BF16 + AWQ cyankiwi + GGUF)
+# continuent de marcher.
+# Si tu veux absolument Chunity AWQ, l'installer dans un venv separe au
+# runtime ou utiliser une image Docker dediee CUDA 13.
 
 # 4) Sanity check au build : torch+torchvision matchent et l'opérateur nms
 #    existe (sinon le build échoue au lieu de planter au runtime).
@@ -87,7 +94,13 @@ RUN python -c "import torch, torchvision; print('torch', torch.__version__, 'tor
 # par torch dans /opt/conda/lib/python3.11/site-packages/nvidia/*/lib mais
 # ne sont pas dans LD_LIBRARY_PATH par défaut → on les ajoute via ldconfig
 # (méthode propre Linux qui survit aux nouvelles sessions).
-RUN find /opt/conda/lib/python3.11/site-packages/nvidia -name lib -type d > /etc/ld.so.conf.d/nvidia-conda.conf && ldconfig && python -c "from llama_cpp import Llama; print('llama_cpp loadable')"
+#
+# ⚠️ On NE TESTE PAS `from llama_cpp import Llama` au build : llama_cpp
+# charge libcuda.so.1 (pilote NVIDIA, pas le runtime), qui n'existe que
+# sur une machine avec GPU + NVIDIA Container Runtime. Sur GHA il n'y a
+# pas de driver → l'import planterait au build mais marche au runtime
+# sur Runpod.
+RUN find /opt/conda/lib/python3.11/site-packages/nvidia -name lib -type d > /etc/ld.so.conf.d/nvidia-conda.conf && ldconfig
 
 # ---- Couche light : code projet (relayered à chaque commit) -----------------
 COPY . .

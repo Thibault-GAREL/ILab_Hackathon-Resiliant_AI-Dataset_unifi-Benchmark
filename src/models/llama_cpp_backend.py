@@ -188,20 +188,59 @@ def make_llama_cpp_generate_fn(
         )
 
     def _gen(image, prompt, sample=None, **kwargs) -> str:
+        # Alignement avec make_gemma_generate_fn (transformers) : on injecte
+        # les choices pour les MC et on force une réponse courte (sinon Gemma
+        # répond verbeusement et la métrique exact-match donne 0).
+        s = sample or {}
+        task = s.get("task", "vqa")
+        choices = s.get("choices") or []
+
+        if task == "multiple_choice" and choices:
+            labeled = "\n".join(f"{chr(65 + i)}. {c}" for i, c in enumerate(choices))
+            text = (
+                f"{(prompt or '').strip()}\n\n{labeled}\n\n"
+                "Answer with ONLY the letter (A, B, C, ...) of the correct choice."
+            )
+        elif task == "captioning":
+            text = "Describe this image in one short sentence. No explanation, no markdown."
+        else:  # vqa
+            text = (
+                f"{(prompt or '').strip()}\n\n"
+                "Answer in as few words as possible. No explanation, no markdown."
+            )
+
         if image is not None:
             content = [
                 {"type": "image_url",
                  "image_url": {"url": _image_to_data_uri(image)}},
-                {"type": "text", "text": prompt},
+                {"type": "text", "text": text},
             ]
         else:
-            content = prompt
+            content = text
 
         response = llm.create_chat_completion(
             messages=[{"role": "user", "content": content}],
             max_tokens=max_new_tokens,
             temperature=0.0,  # équivalent do_sample=False dans transformers
         )
-        return response["choices"][0]["message"]["content"].strip()
+        raw = response["choices"][0]["message"]["content"]
+        return _post_process_pred(raw, task)
 
     return _gen
+
+
+def _post_process_pred(text: str, task: str) -> str:
+    """Aligne avec src/validation/benchmark.py:_post_process_pred.
+
+    - strippe le markdown bold/italic (**...**)
+    - garde uniquement la 1ère ligne (Gemma enchaîne avec "Here's why: ...")
+    - pour les MC, extrait la première lettre A-E si présente
+    """
+    import re as _re
+    text = _re.sub(r"\*+", "", text).strip()
+    text = text.split("\n", 1)[0].strip()
+    if task == "multiple_choice":
+        m = _re.search(r"\b([A-E])\b", text)
+        if m:
+            return m.group(1)
+    return text

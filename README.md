@@ -6,7 +6,7 @@ Code partagé de l'équipe. Trois responsabilités :
 2. **Benchmark interne** (10% du dataset, par-source, métrique adaptée) — `scripts/eval_loop.py`
 3. **Tracking énergie + traçabilité** (CodeCarbon + registry CSV) — `src/tracking/`
 
-> Le code cible Gemma 3n E4B → Student E4B-it (config officielle kickoff
+> Le code cible Gemma 4 E4B → Student E4B-it (config officielle kickoff
 > 27/04). Pour Gemma 4 quand l'API se stabilisera, bumper `transformers` et
 > ajuster `make_gemma_generate_fn` si l'API du processor change.
 
@@ -161,6 +161,32 @@ LIMIT=5 bash scripts/bench_safe.sh
 LIMIT='' bash scripts/bench_safe.sh
 ```
 
+### Tester UN seul modèle (sans passer par bench_safe.sh)
+
+⚠️ **Ne jamais oublier `--dataset_local`** sinon `bench_all.py` retombe sur
+le `dataset_hub` du YAML et tente de re-télécharger les ~50 GB du dataset
+depuis HuggingFace (saturation disque / timeout réseau garantis).
+
+```bash
+# Bon — utilise le dataset local déjà présent sur /workspace
+python scripts/bench_all.py \
+    --label gemma4-e4b-gguf-q4km \
+    --dataset_local /workspace/code/data/unified \
+    --limit_per_source 5
+
+# Plusieurs modèles
+python scripts/bench_all.py \
+    --label gemma4-e4b-gguf-q4km \
+    --label gemma4-e4b-gguf-q8 \
+    --dataset_local /workspace/code/data/unified \
+    --limit_per_source 5
+```
+
+Avantage du wrapper `bench_safe.sh` : il ajoute systématiquement
+`--dataset_local`, `--cleanup_cache_after`, `--country_iso CZE`, etc.
+→ Préférer le wrapper pour les runs sérieux, l'appel direct uniquement
+pour debug ponctuel.
+
 ### Étape 5 — Récupère les résultats sur ton PC
 
 ```bash
@@ -180,6 +206,151 @@ Invoke-WebRequest -Uri "https://github.com/runpod/runpodctl/releases/latest/down
 Une fois le batch fini et les résultats récupérés :
 - **Stop** le pod (préserve le volume `/workspace` + cache HF, facturation minimale)
 - **Terminate** uniquement si tu n'en as plus besoin du tout (supprime le volume)
+
+## Recettes éprouvées (copier-coller direct)
+
+Les blocs ci-dessous ont été testés en condition réelle sur RTX 4090 / Runpod EU-CZ-1. Ils gèrent automatiquement HF_HOME, LD_LIBRARY_PATH, cache cleanup, persistance dans `/workspace`, etc.
+
+### A. Re-synchroniser le code (à chaque nouveau pod)
+
+```bash
+rm -rf /tmp/repo
+git clone --depth 1 https://github.com/Thibault-GAREL/ILab_Hackathon-Resiliant_AI-Dataset_unifi-Benchmark.git /tmp/repo
+cp /tmp/repo/configs/models.yaml /app/configs/models.yaml
+cp /tmp/repo/src/models/llama_cpp_backend.py /app/src/models/llama_cpp_backend.py
+cp /tmp/repo/scripts/bench_all.py /app/scripts/bench_all.py
+cp /tmp/repo/scripts/bench_safe.sh /app/scripts/bench_safe.sh
+chmod +x /app/scripts/bench_safe.sh
+
+# Vérifie
+python /app/scripts/bench_all.py --list
+```
+
+### B. Tester un sous-ensemble de modèles (12 modèles ~60 min sur RTX 4090)
+
+```bash
+nohup python /app/scripts/bench_all.py \
+    --label gemma4-e4b-bf16 --label gemma4-e2b-bf16 \
+    --label gemma4-e4b-axelbrons-q2k --label gemma4-e4b-axelbrons-q3ks \
+    --label gemma4-e4b-axelbrons-q3km --label gemma4-e4b-axelbrons-q3kl \
+    --label gemma4-e4b-axelbrons-q4ks --label gemma4-e4b-axelbrons-q4km \
+    --label gemma4-e4b-axelbrons-q5ks --label gemma4-e4b-axelbrons-q5km \
+    --label gemma4-e4b-axelbrons-q6k --label gemma4-e4b-axelbrons-q8 \
+    --dataset_local /workspace/code/data/unified \
+    --limit_per_source 20 --cleanup_cache_after --skip_existing \
+    > /workspace/bench-axelbrons.log 2>&1 & disown
+
+tail -f /workspace/bench-axelbrons.log
+```
+
+### C. Re-tester des modèles déjà dans le registry (forcer la regénération)
+
+```bash
+# 1) Supprime les reports JSON correspondants (sinon --skip_existing les saute)
+rm -f /workspace/reports/gemma4-e4b-bf16.json
+rm -f /workspace/reports/gemma4-e2b-bf16.json
+
+# 2) (Optionnel) Filtre les lignes du registry pour les retirer aussi
+python <<'PY'
+import csv, shutil
+src = '/workspace/results/registry.csv'
+shutil.copy(src, src + '.bak')
+with open(src) as f:
+    rows = list(csv.DictReader(f)); fn = list(rows[0].keys())
+# Adapte la condition : ici on retire bf16 + tout ce qui contient 'gguf'
+labels_to_remove = {'gemma4-e4b-bf16', 'gemma4-e2b-bf16'}
+keep = [r for r in rows if r['run_label'] not in labels_to_remove]
+print(f'Registry : {len(rows)} -> {len(keep)} runs')
+with open(src, 'w', newline='') as f:
+    w = csv.DictWriter(f, fieldnames=fn); w.writeheader()
+    for r in keep: w.writerow(r)
+PY
+
+# 3) Relance les modèles supprimés (cf. bloc B)
+```
+
+### D. Surveiller / lire le registry sur le pod
+
+```bash
+# Tableau formaté trié par efficience énergétique (samples/J)
+python -c "
+import csv
+with open('/workspace/results/registry.csv') as f:
+    rows = list(csv.DictReader(f))
+rows.sort(key=lambda r: float(r.get('samples_per_joule', 0) or 0), reverse=True)
+print(f'═══ {len(rows)} runs ═══')
+print(f'{\"label\":<40} {\"macro\":>8} {\"J/sample\":>10} {\"samples/J\":>12}')
+print('-' * 78)
+for r in rows:
+    print(f'{r[\"run_label\"]:<40} {r[\"macro_avg\"]:>8} {r[\"joules_per_sample\"]:>10} {r[\"samples_per_joule\"]:>12}')
+"
+
+# Le bench tourne-t-il toujours ?
+ps aux | grep bench_all | grep -v grep
+```
+
+### E. Envoyer le registry sur ton PC
+
+```bash
+# Sur le pod
+rm -f /workspace/results.zip /app/results.zip ./results.zip 2>/dev/null
+runpodctl send /workspace/results/registry.csv
+# → copie le code affiché (style "1234-mystery-othello-trivial-9")
+```
+
+```powershell
+# Sur ton PC Windows (PowerShell), depuis le dossier projet
+cd "d:\Loisir\Code_python\ILab_Resilient_AI_-_Dataset_unifié+Benchmark"
+
+# Si pas déjà téléchargé
+if (!(Test-Path .\runpodctl.exe)) {
+    Invoke-WebRequest -Uri "https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-windows-amd64.exe" -OutFile "runpodctl.exe"
+}
+
+.\runpodctl.exe receive <code>
+
+# Lire le registry reçu
+& c:\0-Code_py_temp\pytorch_cuda_env\Scripts\python.exe -c "
+import csv
+with open('registry.csv') as f:
+    rows = list(csv.DictReader(f))
+rows.sort(key=lambda r: float(r.get('samples_per_joule', 0) or 0), reverse=True)
+print(f'═══ {len(rows)} runs (tri par samples/J desc) ═══')
+print(f'{\"label\":<40} {\"macro\":>8} {\"J/sample\":>10} {\"samples/J\":>12}')
+print('-' * 78)
+for r in rows:
+    print(f'{r[\"run_label\"]:<40} {r[\"macro_avg\"]:>8} {r[\"joules_per_sample\"]:>10} {r[\"samples_per_joule\"]:>12}')
+"
+```
+
+### F. Tester un seul modèle (debug ponctuel)
+
+```bash
+python /app/scripts/bench_all.py \
+    --label gemma4-e4b-gguf-q4km \
+    --dataset_local /workspace/code/data/unified \
+    --limit_per_source 5
+```
+
+⚠️ **Toujours `--dataset_local`** sinon `bench_all.py` retombe sur `dataset_hub` du YAML et tente de re-DL ~50 GB.
+
+### G. Cleanup disque sur `/workspace` (si quota dépassé)
+
+```bash
+df -h /workspace
+du -sh /workspace/hf-cache/hub/* 2>/dev/null | sort -h
+
+# Supprime les modèles déjà benchmarkés (registry persistera de toute façon)
+rm -rf /workspace/hf-cache/hub/models--google--gemma-4-E4B-it
+rm -rf /workspace/hf-cache/hub/models--google--gemma-4-E2B-it
+rm -rf /workspace/hf-cache/hub/models--cyankiwi--*
+rm -rf /workspace/hf-cache/hub/datasets--*   # downloads avortés
+rm -rf /workspace/hf-cache/xet               # nouveau système xet
+rm -rf /workspace/pip-cache
+rm -rf /workspace/tmp/*
+
+df -h /workspace
+```
 
 ## Installation
 
