@@ -12,7 +12,7 @@
 ![Contributions](https://img.shields.io/badge/contributions-welcome-orange.svg)
 
 <p align="center">
-  <img src="img/banner.png" alt="Resilient AI benchmark" width="600">
+  <img src="https://github.com/Thibault-GAREL/Thibault-GAREL/raw/main/Logo_Group_Projects/group_resilient_sq.png" alt="Resilient AI Challenge Logo" width="200">
 </p>
 
 ---
@@ -21,7 +21,9 @@
 
 This project is a **unified benchmark pipeline** for evaluating multimodal large language models (VLMs) on the **PEReN Resilient AI Challenge** at ECE-ILAB. It merges **12 vision-language datasets** (DocVQA, VQAv2, ChartQA, COCO Captions, MMMU, AI2D, etc.) into a single HuggingFace repo, then evaluates any **Gemma 4 / Gemma 3n** checkpoint with per-source metrics + **energy tracking via CodeCarbon**.
 
-The goal is to compare a BF16 baseline against many **quantized variants** (AWQ INT4/INT8, GGUF Q2→Q8, IQ3/IQ4) on the same hardware, since the PEReN ranking is energy-dominated once the 80% accuracy threshold is reached. The whole stack runs in a Docker image auto-built by GitHub Actions and deployable on Runpod in 1 click.
+I built this to understand how **VLM compression** (AWQ, GGUF, FP8) trades quality for energy on real benchmarks — the PEReN ranking is **energy-dominated** once you cross the 80% accuracy threshold, so the cheapest model that stays above the bar wins. No magic tricks, just measure everything: kWh, J/sample, gCO2eq, and a 32-column registry that grows by 1 line per run.
+
+The whole stack runs in a **Docker image auto-built by GitHub Actions** (GHCR) and deployable on Runpod in 1 click. Plenty of fun debugging CUDA libs along the way 😆.
 
 ---
 
@@ -51,12 +53,12 @@ Sample registry comparing Gemma 4 variants on **RTX 4090 / Runpod EU-CZ-1**, `li
 
 | Model | macro_avg | J/sample | samples/J | Notes |
 |---|---|---|---|---|
-| `gemma4-e4b-bf16` | 0.3996 | 117.5 | 0.0085 | Baseline (référence) |
-| `gemma4-e2b-bf16` | 0.3569 | 114.2 | 0.0088 | Borne basse (2× plus petit) |
-| `gemma4-e4b-awq-int4` | 0.4080 | 135.0 | 0.0074 | AWQ INT4 cyankiwi |
-| `gemma4-e4b-awq-int8` | 0.3958 | 125.0 | 0.0080 | AWQ INT8 cyankiwi |
+| `gemma4-e4b-bf16` | 0.3996 | 117.5 | 0.0085 | Baseline reference |
+| `gemma4-e2b-bf16` | 0.3569 | 114.2 | 0.0088 | Lower bound (2× smaller) |
+| `gemma4-e4b-awq-int4` | 0.4080 | 135.0 | 0.0074 | AWQ INT4 (cyankiwi) |
+| `gemma4-e4b-awq-int8` | 0.3958 | 125.0 | 0.0080 | AWQ INT8 (cyankiwi) |
 | `gemma4-e4b-gguf-q8` | ~0.40* | ~110* | ~0.0090* | GGUF Q8_0 (quasi-lossless) |
-| `gemma4-e4b-gguf-q4km` | ~0.36* | ~95* | ~0.0105* | GGUF Q4_K_M (référence 4-bit) |
+| `gemma4-e4b-gguf-q4km` | ~0.36* | ~95* | ~0.0105* | GGUF Q4_K_M (4-bit community reference) |
 
 *\*GGUF scores depend on llama-cpp-python multimodal support for Gemma 4 — currently experimental.*
 
@@ -140,35 +142,35 @@ The project is a **multi-backend benchmarking pipeline** rather than a trained m
 
 ```bash
 ├── configs/
-│   └── models.yaml             # 21 modèles : transformers (BF16+AWQ) + GGUF (bartowski + axelbrons)
+│   └── models.yaml             # 21 models: transformers (BF16+AWQ) + GGUF (bartowski + axelbrons)
 │
-├── src/                        # Code métier importable depuis scripts/
+├── src/                        # Project code (importable from scripts/)
 │   ├── config.py               # DatasetSpec, ALL_DATASETS, MixConfig
 │   ├── data/                   # 12 loaders + UnifiedSample + mix sqrt/uniform/temperature
-│   ├── models/                 # llama_cpp_backend (GGUF multimodal)
+│   ├── models/                 # llama_cpp_backend (multimodal GGUF)
 │   ├── validation/             # benchmark.py + metrics.py + eval_ood.py (MMStar/MME/POPE)
 │   └── tracking/               # energy_tracker (CodeCarbon) + run_registry
 │
-├── scripts/                    # Entrypoints CLI
-│   ├── build_dataset.py        # Build + push du dataset unifié
-│   ├── eval_loop.py            # Benchmark d'un seul modèle
-│   ├── bench_all.py            # Orchestrateur batch (lit configs/models.yaml)
-│   ├── bench_safe.sh           # Wrapper Runpod auto-suffisant (HF_HOME, ldconfig, symlinks)
-│   ├── entrypoint.sh           # Docker ENTRYPOINT (mkdir + symlinks au start)
-│   ├── runpod_setup.sh         # Setup d'un nouveau pod (one-shot)
-│   └── runpod_run.sh           # Build dataset sur Runpod
+├── scripts/                    # CLI entrypoints
+│   ├── build_dataset.py        # Build + push the unified dataset
+│   ├── eval_loop.py            # Benchmark a single model
+│   ├── bench_all.py            # Batch orchestrator (reads configs/models.yaml)
+│   ├── bench_safe.sh           # Self-contained Runpod wrapper (HF_HOME, ldconfig, symlinks)
+│   ├── entrypoint.sh           # Docker ENTRYPOINT (mkdir + symlinks at boot)
+│   ├── runpod_setup.sh         # New-pod setup (one-shot)
+│   └── runpod_run.sh           # Build the dataset on Runpod
 │
 ├── results/
-│   ├── registry.csv            # APPEND-ONLY, 1 ligne / run, 32 colonnes
-│   └── runs/                   # JSON détaillés + CSV énergie par-source
+│   ├── registry.csv            # APPEND-ONLY, 1 row / run, 32 columns
+│   └── runs/                   # Detailed JSON + per-source energy CSV
 │
-├── reports/                    # Rapports JSON eval_loop (1 par run)
+├── reports/                    # eval_loop JSON reports (1 per run)
 │
 ├── .github/workflows/
-│   └── docker-publish.yml      # Build + push image sur GHCR à chaque commit
+│   └── docker-publish.yml      # Build + push image to GHCR on every commit
 │
-├── Dockerfile                  # Image auto-suffisante (torch + cuda + llama-cpp-python)
-├── docker-compose.yml          # Run local
+├── Dockerfile                  # Self-contained image (torch + cuda + llama-cpp-python)
+├── docker-compose.yml          # Local run
 ├── requirements.txt
 ├── LICENSE
 └── README.md
@@ -227,11 +229,11 @@ bash scripts/runpod_run.sh
 
 ---
 
-## 🚀 Runpod — Recettes éprouvées (copy-paste direct)
+## 🚀 Runpod — Battle-tested recipes (copy-paste ready)
 
-Tous les blocs ci-dessous ont été testés en condition réelle sur **RTX 4090 / Runpod EU-CZ-1** et marchent reproductiblement.
+All the blocks below were tested end-to-end on **RTX 4090 / Runpod EU-CZ-1** and run reproducibly.
 
-### A. Re-synchroniser le code (à chaque nouveau pod)
+### A. Sync the code (after each new pod boot)
 
 ```bash
 rm -rf /tmp/repo
@@ -245,7 +247,7 @@ chmod +x /app/scripts/bench_safe.sh
 python /app/scripts/bench_all.py --list
 ```
 
-### B. Lancer un sous-ensemble de modèles (~60 min sur RTX 4090)
+### B. Run a subset of models (~60 min on RTX 4090)
 
 ```bash
 nohup python /app/scripts/bench_all.py \
@@ -262,13 +264,13 @@ nohup python /app/scripts/bench_all.py \
 tail -f /workspace/bench.log
 ```
 
-### C. Re-tester des modèles déjà dans le registry
+### C. Re-test models already in the registry
 
 ```bash
-# Supprime les reports JSON correspondants (sinon --skip_existing les saute)
+# Remove the matching reports/JSON (otherwise --skip_existing skips them)
 rm -f /workspace/reports/gemma4-e4b-bf16.json /workspace/reports/gemma4-e2b-bf16.json
 
-# (Optionnel) filtre les lignes du registry
+# (Optional) filter out the matching rows from the registry
 python <<'PY'
 import csv, shutil
 src = '/workspace/results/registry.csv'
@@ -284,7 +286,7 @@ with open(src, 'w', newline='') as f:
 PY
 ```
 
-### D. Lire le registry sur le pod (tri par efficience énergétique)
+### D. Read the registry on the pod (sorted by energy efficiency)
 
 ```bash
 python -c "
@@ -292,7 +294,7 @@ import csv
 with open('/workspace/results/registry.csv') as f:
     rows = list(csv.DictReader(f))
 rows.sort(key=lambda r: float(r.get('samples_per_joule', 0) or 0), reverse=True)
-print(f'═══ {len(rows)} runs (tri par samples/J desc) ═══')
+print(f'═══ {len(rows)} runs (sorted by samples/J desc) ═══')
 print(f'{\"label\":<40} {\"macro\":>8} {\"J/sample\":>10} {\"samples/J\":>12}')
 print('-' * 78)
 for r in rows:
@@ -300,26 +302,26 @@ for r in rows:
 "
 ```
 
-### E. Envoyer le registry sur ton PC
+### E. Pull the registry back to your PC
 
 ```bash
-# Sur le pod
+# On the pod
 rm -f /workspace/results.zip 2>/dev/null
 runpodctl send /workspace/results/registry.csv
-# → copie le code affiché
+# → copy the code shown
 ```
 
 ```powershell
-# Sur ton PC Windows (PowerShell), depuis le dossier projet
+# On your Windows PC (PowerShell), from the project folder
 cd "d:\Loisir\Code_python\ILab_Resilient_AI_-_Dataset_unifié+Benchmark"
 
 if (!(Test-Path .\runpodctl.exe)) {
     Invoke-WebRequest -Uri "https://github.com/runpod/runpodctl/releases/latest/download/runpodctl-windows-amd64.exe" -OutFile "runpodctl.exe"
 }
-.\runpodctl.exe receive <code-copié-depuis-pod>
+.\runpodctl.exe receive <code-from-pod>
 ```
 
-### F. Tester un seul modèle (debug ponctuel)
+### F. Test a single model (one-off debug)
 
 ```bash
 python /app/scripts/bench_all.py \
@@ -328,15 +330,15 @@ python /app/scripts/bench_all.py \
     --limit_per_source 5
 ```
 
-⚠️ **Toujours `--dataset_local`** sinon `bench_all.py` retombe sur `dataset_hub` du YAML et tente de re-DL ~50 GB.
+⚠️ **Always pass `--dataset_local`** otherwise `bench_all.py` falls back to the `dataset_hub` from the YAML and tries to re-download ~50 GB from HuggingFace.
 
-### G. Cleanup disque sur `/workspace` (si quota dépassé)
+### G. Disk cleanup on `/workspace` (quota exceeded)
 
 ```bash
 df -h /workspace
 du -sh /workspace/hf-cache/hub/* 2>/dev/null | sort -h
 
-# Supprime les modèles déjà benchmarkés (registry persistera de toute façon)
+# Drop already-benchmarked models (the registry rows still persist on disk)
 rm -rf /workspace/hf-cache/hub/models--google--gemma-4-E4B-it
 rm -rf /workspace/hf-cache/hub/models--google--gemma-4-E2B-it
 rm -rf /workspace/hf-cache/hub/models--cyankiwi--*
@@ -349,21 +351,21 @@ df -h /workspace
 
 ---
 
-## 📊 Args clés `eval_loop.py`
+## 📊 Key `eval_loop.py` flags
 
-| Flag | Défaut | Utilité |
+| Flag | Default | Purpose |
 |---|---|---|
-| `--mode` | `real` | `real` / `oracle` / `constant` (debug) |
+| `--mode` | `real` | `real` / `oracle` / `constant` (debug modes) |
 | `--backend` | `transformers` | `transformers` / `llama_cpp` |
-| `--model_path` | – | requis si backend=transformers |
-| `--gguf_repo` / `--gguf_filename` | – | requis si backend=llama_cpp (glob accepté) |
-| `--mmproj_repo` / `--mmproj_filename` | – | multimodal projector pour GGUF VLM |
-| `--dataset_local` / `--dataset_hub` | – | l'un des deux requis |
-| `--subsample_pct` | `10.0` | % par-source à évaluer (100 = full split) |
-| `--limit_per_source` | – | cap dur post-subsample (smoke test) |
-| `--country_iso` | `FRA` | code pays CodeCarbon (CZE pour Runpod EU-CZ-1) |
-| `--run_label` | dérivé | identifiant court dans le registry |
-| `--out` | requis | rapport JSON principal |
+| `--model_path` | – | required when `backend=transformers` |
+| `--gguf_repo` / `--gguf_filename` | – | required when `backend=llama_cpp` (glob accepted) |
+| `--mmproj_repo` / `--mmproj_filename` | – | multimodal projector for GGUF VLM |
+| `--dataset_local` / `--dataset_hub` | – | one of the two is required |
+| `--subsample_pct` | `10.0` | % per-source to evaluate (100 = full split) |
+| `--limit_per_source` | – | hard cap post-subsample (smoke test) |
+| `--country_iso` | `FRA` | CodeCarbon country code (CZE for Runpod EU-CZ-1) |
+| `--run_label` | derived | short identifier in the registry |
+| `--out` | required | main JSON report path |
 
 ---
 
@@ -378,6 +380,17 @@ This project is part of the **ECE-ILAB Resilient AI Challenge** (PEReN-evaluated
 - 📦 GGUF quantizations from [`bartowski`](https://huggingface.co/bartowski) and [`axelbrons`](https://huggingface.co/axelbrons)
 - 🗜️ AWQ checkpoints from [`cyankiwi`](https://huggingface.co/cyankiwi)
 
-I used Claude AI to scaffold the multi-backend dispatching (transformers ↔ llama_cpp), debug the CUDA libs resolution (libcuda.so.1 vs libcudart.so.12), and accelerate the Dockerfile setup with ldconfig nvidia paths.
+I used **Claude AI** to scaffold the multi-backend dispatching (transformers ↔ llama_cpp ↔ vLLM), debug the CUDA libs resolution (libcuda.so.1 vs libcudart.so.12), and accelerate the Dockerfile setup with `ldconfig` nvidia paths.
+
+**Contributors:**
+- 🤝 [Philémon Vittet](https://github.com/PhilV1tt) — vLLM backend integration
+
+**Things I learned on this one** 🧠:
+- 🐳 How Docker layer caching breaks silently when `pip install -U` upgrades torch under your feet (torchao 0.17 → torch 2.12 → CUDA 13 → everything dies)
+- 🔋 How **CodeCarbon** tracks energy per-source and why `samples_per_joule` is the real PEReN KPI, not raw accuracy
+- 🦙 How `llama-cpp-python` multimodal works internally (`mmproj` projector + image data-URI in chat completions)
+- 📦 How to ship an auto-suffisant Docker image via GitHub Actions on GHCR with `ldconfig` for NVIDIA libs
+
+Have fun benchmarking 🔬⚡ !
 
 Code created by me 😎, Thibault GAREL - [Github](https://github.com/Thibault-GAREL)
