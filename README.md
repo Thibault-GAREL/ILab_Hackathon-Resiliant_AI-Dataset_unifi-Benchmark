@@ -393,4 +393,4 @@ I used **Claude AI** to scaffold the multi-backend dispatching (transformers ↔
 
 Have fun benchmarking 🔬⚡ !
 
-Code created by me 😎, Thibault GAREL - [Github](https://github.com/Thibault-GAREL)
+Code created by [Philémon Vittet](https://github.com/PhilV1tt) and me 😎, Thibault GAREL - [Github](https://github.com/Thibault-GAREL)
