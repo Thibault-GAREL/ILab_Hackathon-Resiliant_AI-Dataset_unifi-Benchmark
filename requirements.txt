@@ -36,6 +36,9 @@ tqdm>=4.66
 pydantic>=2.5
 python-Levenshtein>=0.25  # ANLS pour DocVQA
 PyYAML>=6.0               # Lecture configs/models.yaml par scripts/bench_all.py
+typer>=0.12               # CLI benchmark
+rich>=13.7                # Tables et affichage CLI
+questionary>=2.0          # Menu interactif fleches/espace/entree
 
 # Quantizer transformers utilise par les modeles AWQ cyankiwi
 compressed-tensors        # cyankiwi/gemma-4-E4B-it-AWQ-INT4|INT8 (pure Python, stable)

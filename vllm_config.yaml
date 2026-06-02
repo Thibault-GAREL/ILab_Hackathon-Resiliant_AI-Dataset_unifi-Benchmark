@@ -1,0 +1,34 @@
+# Config serveur vLLM compatible API OpenAI :
+# Scarbote/gemma4-e4b-modele-complet-vllm-fp8-kvfp8-soft140
+#
+# Usage :
+#   vllm serve --config vllm_config.yaml
+
+model: Scarbote/gemma4-e4b-modele-complet-vllm-fp8-kvfp8-soft140
+served-model-name: modele-complet-fp8-kvfp8-soft140
+
+host: 0.0.0.0
+port: 8000
+uvicorn-log-level: info
+
+trust-remote-code: true
+max-model-len: 2048
+max-num-seqs: 1
+# Deux process vLLM sur le meme GPU : budget memoire separe.
+# Si un seul modele tourne, remettre 0.90.
+gpu-memory-utilization: 0.45
+tensor-parallel-size: 1
+
+quantization: fp8
+kv-cache-dtype: fp8
+limit-mm-per-prompt:
+  image: 1
+mm-processor-kwargs:
+  max_soft_tokens: 140
+
+generation-config: vllm
+override-generation-config:
+  max_new_tokens: 16
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 64
