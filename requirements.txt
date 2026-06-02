@@ -7,7 +7,7 @@
 # pip considérerait `torch==2.5.1` comme différent de `torch==2.5.1+cu121`
 # déjà installé et réinstallerait la version CPU depuis PyPI, cassant la
 # paire torch+torchvision (erreur "operator torchvision::nms does not exist").
-transformers>=4.44.0      # Gemma 3n natif (Gemma 4 : bumper la version au moment du kickoff)
+transformers>=4.44.0,<5.9 # Evite les sauts majeurs pendant le build Docker
 accelerate>=0.30.0
 peft>=0.10.0
 # bitsandbytes laisse libre : on s'en sert plus pour bnb-4bit (retiré du YAML,
@@ -41,7 +41,7 @@ rich>=13.7                # Tables et affichage CLI
 questionary>=2.0          # Menu interactif fleches/espace/entree
 
 # Quantizer transformers utilise par les modeles AWQ cyankiwi
-compressed-tensors        # cyankiwi/gemma-4-E4B-it-AWQ-INT4|INT8 (pure Python, stable)
+compressed-tensors<0.16   # 0.16 tire torch 2.12/CUDA 13 et casse torchvision 0.20
 
 # Note : autoawq et gptqmodel sont installes SEPAREMENT dans le Dockerfile
 # (etape best-effort, peuvent echouer sans bloquer le build car ils

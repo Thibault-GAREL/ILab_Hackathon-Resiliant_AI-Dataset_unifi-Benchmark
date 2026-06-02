@@ -49,6 +49,15 @@ WORKDIR /app
 # cette couche est réutilisée → rebuild incrémental rapide.
 COPY requirements.txt .
 
+# Contraintes torch : les deps PyPI bougent vite et certaines tirent torch
+# latest. Ici on garde la stack CUDA 12.1 de l'image PyTorch 2.5.1.
+RUN printf '%s\n' \
+    'torch==2.5.1' \
+    'torchvision==0.20.1' \
+    'torchaudio==2.5.1' \
+    'triton==3.1.0' \
+    > /tmp/torch-cu121-constraints.txt
+
 # 1) Wheel CUDA 12.1 pré-compilé pour llama-cpp-python (backend GGUF).
 #    Gain ~10 min vs source build.
 RUN pip install --upgrade pip && \
@@ -63,14 +72,13 @@ RUN pip install --no-cache-dir \
     torchvision==0.20.1 \
     --index-url https://download.pytorch.org/whl/cu121
 
-# 3) Toutes les autres deps depuis requirements.txt (transformers, datasets,
-#    codecarbon, bitsandbytes, compressed-tensors, etc.). NB : autoawq et
-#    gptqmodel sont installes en best-effort apres (etapes risquees).
-RUN pip install -r requirements.txt
+# 3) Toutes les autres deps depuis requirements.txt. Le fichier de contraintes
+#    empeche pip de remplacer torch 2.5.1+cu121 par un torch PyPI plus recent.
+RUN pip install -r requirements.txt -c /tmp/torch-cu121-constraints.txt
 
 # 3bis) autoawq : best-effort (compile du C++, peut echouer sur certains envs).
 #       Sans autoawq, certains AWQ legacy ne loadent pas.
-RUN pip install autoawq || echo "WARNING: autoawq install failed - AWQ legacy models will not load"
+RUN pip install autoawq -c /tmp/torch-cu121-constraints.txt || echo "WARNING: autoawq install failed - AWQ legacy models will not load"
 
 # gptqmodel RETIRE : il tire torchao 0.17.0 comme dependance, qui a son
 # tour exige torch==2.12.0 (CUDA 13). Resultat : notre torch 2.5.1+cu121
