@@ -54,6 +54,47 @@ from src.tracking.energy_tracker import (
 DEFAULT_SUBSAMPLE_PCT: float = 10.0
 DEFAULT_SUBSAMPLE_SEED: int = 42
 
+OFFICIAL_BASE_MODEL = {
+    "energy_consumption": 99.70575476453993,
+    "document_analysis": 0.7607534745955797,
+    "image_understanding": 0.68,
+    "mean": 0.7203767372977898,
+    "mean_recovery": 100.0,
+}
+OFFICIAL_TOP_ROUND1 = {
+    "energy_consumption": 35.048636372219946,
+    "document_analysis": 0.5634310134310134,
+    "image_understanding": 0.7,
+    "mean": 0.6317155067155067,
+    "mean_recovery": 87.69238011281973,
+}
+OFFICIAL_INTELLIGENCE_LAB_ECE = {
+    "energy_consumption": 205.91259250771995,
+    "document_analysis": 0.8103779553779553,
+    "image_understanding": 0.5869565217391305,
+    "mean": 0.6986672385585428,
+    "mean_recovery": 96.9863687130318,
+}
+DOCUMENT_ANALYSIS_SOURCES = ("docvqa", "textvqa", "chartqa", "infographicvqa")
+IMAGE_UNDERSTANDING_SOURCES = (
+    "vqav2",
+    "ok_vqa",
+    "coco_captions",
+    "realworldqa",
+    "scienceqa",
+    "ai2d",
+    "mathvista",
+    "mmmu",
+)
+LEADERBOARD_COLUMNS = [
+    "team_name",
+    "energy_consumption",
+    "document_analysis",
+    "image_understanding",
+    "mean",
+    "mean_recovery",
+]
+
 
 # ----------------------------------------------------------------------------
 # Types
@@ -73,6 +114,25 @@ class PerSourceResult:
 
 
 @dataclass
+class OfficialLikeScores:
+    document_analysis: float | None
+    image_understanding: float | None
+    mean: float | None
+    mean_recovery: float | None
+    document_sources_present: list[str]
+    document_sources_missing: list[str]
+    image_sources_present: list[str]
+    image_sources_missing: list[str]
+    reference_base_model: dict[str, float] = field(default_factory=lambda: dict(OFFICIAL_BASE_MODEL))
+    reference_top_round1: dict[str, float] = field(default_factory=lambda: dict(OFFICIAL_TOP_ROUND1))
+    reference_intelligence_lab_ece: dict[str, float] = field(
+        default_factory=lambda: dict(OFFICIAL_INTELLIGENCE_LAB_ECE)
+    )
+    delta_mean_vs_intelligence_lab_ece: float | None = None
+    delta_recovery_vs_intelligence_lab_ece: float | None = None
+
+
+@dataclass
 class BenchmarkResult:
     model_id: str
     split: str
@@ -87,6 +147,7 @@ class BenchmarkResult:
     efficiency_kpi: dict[str, float] | None = None
     subsample_pct: float = 100.0
     subsample_seed: int | None = None
+    official_like: OfficialLikeScores | None = None
 
     def to_json(self) -> str:
         return json.dumps(
@@ -138,6 +199,46 @@ def subsample_per_source(
         keep = max(1, int(round(len(lst) * pct / 100.0)))
         out[src] = [lst[i] for i in idx[:keep]]
     return out
+
+
+def compute_official_like_scores(per_source: list[PerSourceResult]) -> OfficialLikeScores:
+    """Calcule les colonnes qui ressemblent au tableau officiel du jury."""
+    scores_by_source = {
+        result.source: result.score
+        for result in per_source
+        if result.n_scored > 0
+        and isinstance(result.score, (int, float))
+        and result.score == result.score
+    }
+
+    def average_bucket(source_names: tuple[str, ...]) -> tuple[float | None, list[str], list[str]]:
+        present = [source for source in source_names if source in scores_by_source]
+        missing = [source for source in source_names if source not in scores_by_source]
+        if not present:
+            return None, present, missing
+        return sum(scores_by_source[source] for source in present) / len(present), present, missing
+
+    document, document_present, document_missing = average_bucket(DOCUMENT_ANALYSIS_SOURCES)
+    image, image_present, image_missing = average_bucket(IMAGE_UNDERSTANDING_SOURCES)
+    mean = (document + image) / 2.0 if document is not None and image is not None else None
+    recovery = mean / OFFICIAL_BASE_MODEL["mean"] * 100.0 if mean is not None else None
+
+    return OfficialLikeScores(
+        document_analysis=document,
+        image_understanding=image,
+        mean=mean,
+        mean_recovery=recovery,
+        document_sources_present=document_present,
+        document_sources_missing=document_missing,
+        image_sources_present=image_present,
+        image_sources_missing=image_missing,
+        delta_mean_vs_intelligence_lab_ece=(
+            mean - OFFICIAL_INTELLIGENCE_LAB_ECE["mean"] if mean is not None else None
+        ),
+        delta_recovery_vs_intelligence_lab_ece=(
+            recovery - OFFICIAL_INTELLIGENCE_LAB_ECE["mean_recovery"] if recovery is not None else None
+        ),
+    )
 
 
 # ----------------------------------------------------------------------------
@@ -315,6 +416,8 @@ def evaluate_model(
     else:
         micro = macro = 0.0
 
+    official_like = compute_official_like_scores(results)
+
     # 6. Agrégat énergie
     energy_total_dict = None
     efficiency_kpi = None
@@ -338,6 +441,7 @@ def evaluate_model(
             efficiency_kpi=efficiency_kpi,
             subsample_pct=subsample_pct,
             subsample_seed=subsample_seed,
+            official_like=official_like,
         ),
         snapshots,
     )

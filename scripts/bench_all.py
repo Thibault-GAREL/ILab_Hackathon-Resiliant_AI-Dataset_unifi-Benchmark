@@ -131,6 +131,14 @@ def _build_eval_cmd(model: dict, defaults: dict, args) -> list[str]:
             "vllm_kv_cache_dtype": "--vllm_kv_cache_dtype",
             "vllm_max_soft_tokens": "--vllm_max_soft_tokens",
             "vllm_seed": "--vllm_seed",
+            "vllm_adaptive_soft_tokens": "--vllm_adaptive_soft_tokens",
+            "vllm_adaptive_throttled_soft_tokens": "--vllm_adaptive_throttled_soft_tokens",
+            "vllm_adaptive_peak_power_w": "--vllm_adaptive_peak_power_w",
+            "vllm_adaptive_peak_active_power_w": "--vllm_adaptive_peak_active_power_w",
+            "vllm_adaptive_baseline_power_w": "--vllm_adaptive_baseline_power_w",
+            "vllm_adaptive_cooldown_requests": "--vllm_adaptive_cooldown_requests",
+            "vllm_adaptive_gpu_index": "--vllm_adaptive_gpu_index",
+            "vllm_adaptive_sample_interval_s": "--vllm_adaptive_sample_interval_s",
         }
         for key, flag in vllm_map.items():
             value = model.get(key, defaults.get(key))

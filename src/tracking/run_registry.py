@@ -20,9 +20,8 @@ Workflow :
 Le CSV est créé avec en-tête au premier append, puis seules les lignes
 sont ajoutées ensuite. Compatible reprise après crash.
 
-Bonus : `dump_run_artifacts()` sérialise une run complète en 2 fichiers
-côte-à-côte (`<label>_<timestamp>.json` + `<label>_<timestamp>_energy.csv`)
-pour un debug détaillé d'une run spécifique.
+Bonus : `dump_run_artifacts()` sérialise une run complète en artefacts
+côte-à-côte : JSON, énergie par source, résumé texte, et tableau jury-like.
 """
 from __future__ import annotations
 
@@ -36,6 +35,12 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from src.tracking.energy_tracker import EnergySnapshot, derive_efficiency_metrics
+from src.validation.benchmark import (
+    LEADERBOARD_COLUMNS,
+    OFFICIAL_BASE_MODEL,
+    OFFICIAL_INTELLIGENCE_LAB_ECE,
+    OFFICIAL_TOP_ROUND1,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +88,20 @@ REGISTRY_COLUMNS: list[str] = [
     "ram_total_gb",
     # --- Notes libres ---
     "notes",
+    # --- Runtime stats optionnelles ---
+    "adaptive_trigger_count",
+    "adaptive_max_power_w",
+    "adaptive_throttle_remaining",
+    "runtime_stats_json",
+    # --- Colonnes jury-like ---
+    "official_energy_consumption",
+    "official_document_analysis",
+    "official_image_understanding",
+    "official_mean",
+    "official_mean_recovery",
+    "official_delta_mean_vs_intelligence_lab_ece",
+    "official_missing_sources_json",
+    "leaderboard_like_json",
 ]
 
 
@@ -127,6 +146,18 @@ class RegistryEntry:
     ram_total_gb: float | None = None
 
     notes: str = ""
+    adaptive_trigger_count: int | None = None
+    adaptive_max_power_w: float | None = None
+    adaptive_throttle_remaining: int | None = None
+    runtime_stats_json: str = "{}"
+    official_energy_consumption: float | None = None
+    official_document_analysis: float | None = None
+    official_image_understanding: float | None = None
+    official_mean: float | None = None
+    official_mean_recovery: float | None = None
+    official_delta_mean_vs_intelligence_lab_ece: float | None = None
+    official_missing_sources_json: str = "{}"
+    leaderboard_like_json: str = "[]"
 
     # ---- Construction depuis les objets benchmark + énergie ----
     @classmethod
@@ -157,6 +188,18 @@ class RegistryEntry:
 
         gpus = snap.hardware.get("gpus") or []
         gpu_name = gpus[0]["name"] if gpus else ""
+        runtime_stats = cfg.get("runtime_stats") or {}
+        adaptive_stats = runtime_stats.get("adaptive_soft_tokens") or {}
+        official_like = _official_like_dict(getattr(bench_result, "official_like", None))
+        leaderboard = _leaderboard_rows(
+            run_label=run_label,
+            official_like=official_like,
+            joules_per_sample=eff.get("joules_per_sample", 0.0),
+        )
+        missing_sources = {
+            "document": official_like.get("document_sources_missing") or [],
+            "image": official_like.get("image_sources_missing") or [],
+        }
 
         return cls(
             timestamp_iso=datetime.fromtimestamp(snap.started_at, tz=timezone.utc)
@@ -198,6 +241,20 @@ class RegistryEntry:
             ram_total_gb=(snap.hardware.get("cpu") or {}).get("ram_total_gb"),
 
             notes=notes,
+            adaptive_trigger_count=adaptive_stats.get("trigger_count"),
+            adaptive_max_power_w=adaptive_stats.get("max_power_w"),
+            adaptive_throttle_remaining=adaptive_stats.get("throttle_remaining"),
+            runtime_stats_json=json.dumps(runtime_stats, ensure_ascii=False, sort_keys=True),
+            official_energy_consumption=eff.get("joules_per_sample", 0.0),
+            official_document_analysis=official_like.get("document_analysis"),
+            official_image_understanding=official_like.get("image_understanding"),
+            official_mean=official_like.get("mean"),
+            official_mean_recovery=official_like.get("mean_recovery"),
+            official_delta_mean_vs_intelligence_lab_ece=official_like.get(
+                "delta_mean_vs_intelligence_lab_ece"
+            ),
+            official_missing_sources_json=json.dumps(missing_sources, ensure_ascii=False, sort_keys=True),
+            leaderboard_like_json=json.dumps(leaderboard, ensure_ascii=False),
         )
 
     # ---- Sérialisation -----------------------------------------------------
@@ -231,12 +288,13 @@ def append_to_registry(
     p = Path(csv_path)
     p.parent.mkdir(parents=True, exist_ok=True)
 
+    columns = _ensure_registry_columns(p)
     is_new = not p.exists() or p.stat().st_size == 0
     with p.open("a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if is_new:
-            w.writerow(REGISTRY_COLUMNS)
-        w.writerow(entry.to_csv_row())
+            w.writerow(columns)
+        w.writerow(_entry_row_for_columns(entry, columns))
     return p
 
 
@@ -246,13 +304,14 @@ def append_many(
 ) -> Path:
     p = Path(csv_path)
     p.parent.mkdir(parents=True, exist_ok=True)
+    columns = _ensure_registry_columns(p)
     is_new = not p.exists() or p.stat().st_size == 0
     with p.open("a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if is_new:
-            w.writerow(REGISTRY_COLUMNS)
+            w.writerow(columns)
         for e in entries:
-            w.writerow(e.to_csv_row())
+            w.writerow(_entry_row_for_columns(e, columns))
     return p
 
 
@@ -335,9 +394,36 @@ def dump_run_artifacts(
     ]
     if "score_per_kwh" in eff:
         lines.append(f"score/kWh  : {eff['score_per_kwh']:.4g}")
+
+    official_like = _official_like_dict(getattr(bench_result, "official_like", None))
+    paths = {"json": json_path, "energy_csv": csv_path, "summary": txt_path}
+    if official_like:
+        leaderboard = _leaderboard_rows(run_label, official_like, eff["joules_per_sample"])
+        leaderboard_csv_path = Path(str(base) + "_leaderboard_like.csv")
+        with leaderboard_csv_path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=LEADERBOARD_COLUMNS)
+            w.writeheader()
+            for row in leaderboard:
+                w.writerow({column: row.get(column) for column in LEADERBOARD_COLUMNS})
+
+        leaderboard_md_path = Path(str(base) + "_leaderboard_like.md")
+        leaderboard_md_path.write_text("\n".join(_leaderboard_markdown(leaderboard)) + "\n")
+
+        lines.extend(
+            [
+                "",
+                "Jury-like",
+                f"document_analysis : {_fmt_optional(official_like.get('document_analysis'))}",
+                f"image_understanding: {_fmt_optional(official_like.get('image_understanding'))}",
+                f"mean               : {_fmt_optional(official_like.get('mean'))}",
+                f"mean_recovery      : {_fmt_optional(official_like.get('mean_recovery'))}",
+            ]
+        )
+        paths["leaderboard_csv"] = leaderboard_csv_path
+        paths["leaderboard_md"] = leaderboard_md_path
     txt_path.write_text("\n".join(lines))
 
-    return {"json": json_path, "energy_csv": csv_path, "summary": txt_path}
+    return paths
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +432,95 @@ def dump_run_artifacts(
 def _slug(s: str) -> str:
     keep = "abcdefghijklmnopqrstuvwxyz0123456789-_"
     return "".join(c if c in keep else "-" for c in s.lower())[:60].strip("-") or "run"
+
+
+def _ensure_registry_columns(path: Path) -> list[str]:
+    """Migre le header CSV si des colonnes append-only ont ete ajoutees."""
+    if not path.exists() or path.stat().st_size == 0:
+        return list(REGISTRY_COLUMNS)
+
+    with path.open(newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        existing = list(reader.fieldnames or [])
+        rows = list(reader)
+
+    columns = list(existing)
+    changed = False
+    for column in REGISTRY_COLUMNS:
+        if column not in columns:
+            columns.append(column)
+            changed = True
+
+    if not changed:
+        return columns
+
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({column: row.get(column, "") for column in columns})
+    os.replace(tmp, path)
+    return columns
+
+
+def _entry_row_for_columns(entry: RegistryEntry, columns: list[str]) -> list[str]:
+    d = entry.to_dict()
+    return [_csv_safe(d.get(c)) for c in columns]
+
+
+def _official_like_dict(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    return asdict(value)
+
+
+def _leaderboard_rows(
+    run_label: str,
+    official_like: dict[str, Any],
+    joules_per_sample: float,
+) -> list[dict[str, Any]]:
+    return [
+        {"team_name": "base_model", **OFFICIAL_BASE_MODEL},
+        {"team_name": "Top model from Round 1", **OFFICIAL_TOP_ROUND1},
+        {"team_name": "Intelligence Lab ECE", **OFFICIAL_INTELLIGENCE_LAB_ECE},
+        {
+            "team_name": run_label,
+            "energy_consumption": joules_per_sample,
+            "document_analysis": official_like.get("document_analysis"),
+            "image_understanding": official_like.get("image_understanding"),
+            "mean": official_like.get("mean"),
+            "mean_recovery": official_like.get("mean_recovery"),
+        },
+    ]
+
+
+def _fmt_optional(value: Any, digits: int = 4) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return f"{value:.{digits}f}"
+    return str(value)
+
+
+def _leaderboard_markdown(rows: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "| team_name | energy_consumption | document_analysis | image_understanding | mean | mean_recovery |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for row in rows:
+        lines.append(
+            "| "
+            + " | ".join(_leaderboard_value(row.get(column)) for column in LEADERBOARD_COLUMNS)
+            + " |"
+        )
+    return lines
+
+
+def _leaderboard_value(value: Any) -> str:
+    return "" if value is None else str(value)
 
 
 __all__ = [

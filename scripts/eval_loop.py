@@ -95,6 +95,10 @@ DEFAULT_INTERNAL_SOURCES = {
 }
 
 
+def _fmt_score(value: Any) -> str:
+    return "n/a" if value is None else f"{float(value):.4f}"
+
+
 def _load_internal_dataset(args):
     from datasets import load_from_disk, load_dataset
     try:
@@ -175,6 +179,14 @@ def _make_generate_fn(args):
             enforce_eager=args.vllm_enforce_eager,
             revision=args.revision,
             seed=args.vllm_seed,
+            adaptive_soft_tokens=args.vllm_adaptive_soft_tokens,
+            adaptive_throttled_soft_tokens=args.vllm_adaptive_throttled_soft_tokens,
+            adaptive_peak_power_w=args.vllm_adaptive_peak_power_w,
+            adaptive_peak_active_power_w=args.vllm_adaptive_peak_active_power_w,
+            adaptive_baseline_power_w=args.vllm_adaptive_baseline_power_w,
+            adaptive_cooldown_requests=args.vllm_adaptive_cooldown_requests,
+            adaptive_gpu_index=args.vllm_adaptive_gpu_index,
+            adaptive_sample_interval_s=args.vllm_adaptive_sample_interval_s,
         )
         return gen_fn, args.model_path
 
@@ -193,6 +205,9 @@ def _make_generate_fn(args):
             n_gpu_layers=args.n_gpu_layers,
             n_ctx=args.n_ctx,
             model_family=args.model_family,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            top_k=args.top_k,
         )
         model_id = f"{args.gguf_repo}/{args.gguf_filename}"
         return gen_fn, model_id
@@ -286,6 +301,16 @@ def main() -> int:
     ap.add_argument("--vllm_no_enforce_eager", dest="vllm_enforce_eager", action="store_false")
     ap.add_argument("--vllm_seed", type=int, default=42,
                     help="Seed sampling vLLM quand supporté par la version installée.")
+    ap.add_argument("--vllm_adaptive_soft_tokens",
+                    choices=["none", "nvml_peak_v1"], default="none",
+                    help="Throttle dynamique du budget visuel vLLM après pic NVML.")
+    ap.add_argument("--vllm_adaptive_throttled_soft_tokens", type=int, default=70)
+    ap.add_argument("--vllm_adaptive_peak_power_w", type=float, default=None)
+    ap.add_argument("--vllm_adaptive_peak_active_power_w", type=float, default=None)
+    ap.add_argument("--vllm_adaptive_baseline_power_w", type=float, default=0.0)
+    ap.add_argument("--vllm_adaptive_cooldown_requests", type=int, default=3)
+    ap.add_argument("--vllm_adaptive_gpu_index", type=int, default=0)
+    ap.add_argument("--vllm_adaptive_sample_interval_s", type=float, default=0.2)
 
     # ----- Dataset interne ------------------------------------------------
     ap.add_argument("--dataset_local", default=None,
@@ -406,6 +431,14 @@ def main() -> int:
             backend="disabled",
         )
 
+    runtime_stats: dict[str, Any] = {}
+    get_runtime_stats = getattr(gen_fn, "runtime_stats", None)
+    if callable(get_runtime_stats):
+        try:
+            runtime_stats = get_runtime_stats()
+        except Exception as exc:
+            runtime_stats = {"error": f"{type(exc).__name__}: {exc}"}
+
     # ----- Append au registry CSV global ---------------------------------
     config_snapshot = {
         "mode": args.mode,
@@ -428,6 +461,14 @@ def main() -> int:
             "max_soft_tokens": args.vllm_max_soft_tokens,
             "enforce_eager": args.vllm_enforce_eager,
             "seed": args.vllm_seed,
+            "adaptive_soft_tokens": args.vllm_adaptive_soft_tokens,
+            "adaptive_throttled_soft_tokens": args.vllm_adaptive_throttled_soft_tokens,
+            "adaptive_peak_power_w": args.vllm_adaptive_peak_power_w,
+            "adaptive_peak_active_power_w": args.vllm_adaptive_peak_active_power_w,
+            "adaptive_baseline_power_w": args.vllm_adaptive_baseline_power_w,
+            "adaptive_cooldown_requests": args.vllm_adaptive_cooldown_requests,
+            "adaptive_gpu_index": args.vllm_adaptive_gpu_index,
+            "adaptive_sample_interval_s": args.vllm_adaptive_sample_interval_s,
         },
         "split": args.split,
         "sources_filter": args.sources,
@@ -436,6 +477,7 @@ def main() -> int:
         "subsample_seed": args.subsample_seed,
         "country_iso": args.country_iso,
         "no_energy_tracking": args.no_energy_tracking,
+        "runtime_stats": runtime_stats,
     }
     entry = RegistryEntry.from_benchmark(
         run_label=args.run_label,
@@ -466,6 +508,10 @@ def main() -> int:
         "macro_avg": bench_result.macro_avg,
         "micro_avg": bench_result.micro_avg,
         "per_source": {r.source: r.score for r in bench_result.per_source},
+        "official_like": (
+            asdict(bench_result.official_like)
+            if bench_result.official_like is not None else None
+        ),
         "n_samples_total": agg_snap.n_samples,
         "n_sources": len(bench_result.per_source),
         "energy": {
@@ -479,6 +525,7 @@ def main() -> int:
             "country": agg_snap.country_iso,
         },
         "efficiency_kpi": derive_efficiency_metrics(agg_snap),
+        "runtime_stats": runtime_stats,
     }
     report = {
         "model_id": model_id,
@@ -499,6 +546,12 @@ def main() -> int:
     print("=" * 72)
     print(f"  macro_avg       = {summary['macro_avg']:.4f}")
     print(f"  micro_avg       = {summary['micro_avg']:.4f}")
+    if summary.get("official_like"):
+        official = summary["official_like"]
+        print(f"  document        = {_fmt_score(official['document_analysis'])}")
+        print(f"  image           = {_fmt_score(official['image_understanding'])}")
+        print(f"  official mean   = {_fmt_score(official['mean'])}")
+        print(f"  recovery        = {_fmt_score(official['mean_recovery'])}")
     print(f"  n_samples       = {summary['n_samples_total']}")
     print(f"  kWh total       = {summary['energy']['kwh_total']:.6g}")
     print(f"    └─ GPU        = {summary['energy']['kwh_gpu']:.6g}")

@@ -47,10 +47,9 @@ def _image_to_data_uri(image, format: str = "PNG") -> str:
 def _resolve_chat_handler(model_family: str | None, mmproj_path: str):
     """Sélectionne le ChatHandler llama.cpp adapté à la famille de modèle.
 
-    Pour Gemma 3 / 3n / 4, on utilise `Gemma3ChatHandler` (introduit dans
-    llama-cpp-python ≥ 0.3.x). Si le handler n'existe pas dans la version
-    installée, on fall-back sur `Llava15ChatHandler` (générique) — ça peut
-    fonctionner pour des familles non Gemma mais pas garanti pour Gemma 3n.
+    Pour Gemma 4, on tente d'abord `Gemma4ChatHandler`, puis
+    `Gemma3ChatHandler` pour les versions llama-cpp-python plus anciennes.
+    Si aucun handler Gemma n'existe, on fall-back sur `Llava15ChatHandler`.
     """
     from llama_cpp.llama_chat_format import (
         Llava15ChatHandler,
@@ -58,14 +57,14 @@ def _resolve_chat_handler(model_family: str | None, mmproj_path: str):
 
     family = (model_family or "gemma3").lower()
 
-    # Tentative d'import du handler natif Gemma3 (peut ne pas exister selon
-    # la version de llama-cpp-python).
     if family.startswith("gemma"):
-        try:
-            from llama_cpp.llama_chat_format import Gemma3ChatHandler
-            return Gemma3ChatHandler(clip_model_path=mmproj_path, verbose=False)
-        except ImportError:
-            pass
+        for handler_name in ("Gemma4ChatHandler", "Gemma3ChatHandler"):
+            try:
+                from llama_cpp import llama_chat_format
+                handler_cls = getattr(llama_chat_format, handler_name)
+                return handler_cls(clip_model_path=mmproj_path, verbose=False)
+            except (AttributeError, ImportError):
+                pass
 
     # Fall-back générique LLaVA 1.5 (peut suffire pour des modèles compatibles
     # avec ce template, sinon adapter ici).
@@ -136,6 +135,9 @@ def make_llama_cpp_generate_fn(
     n_ctx: int = 2048,
     model_family: str | None = "gemma3",
     seed: int = 42,
+    temperature: float = 1.0,
+    top_p: float = 0.95,
+    top_k: int = 64,
 ) -> GenerateFn:
     """Charge un modèle GGUF via llama-cpp-python et retourne une GenerateFn
     compatible avec evaluate_model() (même signature que make_gemma_generate_fn).
@@ -153,6 +155,7 @@ def make_llama_cpp_generate_fn(
     n_ctx : taille du contexte (4096 pour les Gemma 3n, 2048 suffit pour le
         bench où les prompts sont courts).
     model_family : "gemma3" / "gemma4" / "llava" — pilote le ChatHandler.
+    temperature, top_p, top_k : sampling du jury PEReN.
     """
     from llama_cpp import Llama
 
@@ -221,7 +224,9 @@ def make_llama_cpp_generate_fn(
         response = llm.create_chat_completion(
             messages=[{"role": "user", "content": content}],
             max_tokens=max_new_tokens,
-            temperature=0.0,  # équivalent do_sample=False dans transformers
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
         )
         raw = response["choices"][0]["message"]["content"]
         return _post_process_pred(raw, task)

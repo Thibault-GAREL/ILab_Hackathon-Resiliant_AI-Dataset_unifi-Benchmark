@@ -37,6 +37,14 @@ defaults:
   vllm_seed: 42
 
 groups:
+  jury_like_anchor:
+    - mathos-resilient-challenge-gguf-q4km
+
+  jury_like_compare:
+    - mathos-resilient-challenge-gguf-q4km
+    - gemma4-e4b-vllm-bf16-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+
   vllm_smoke:
     - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
 
@@ -55,7 +63,13 @@ groups:
     - gemma4-e4b-vllm-bf16-soft140-t16
     - gemma4-e4b-vllm-fp8-soft140-t16
     - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16-adaptive
     - gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
+
+  # Probe adaptatif : soft140 par défaut, throttle à soft70 après pic NVML.
+  vllm_adaptive_probe:
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16
+    - gemma4-e4b-vllm-fp8-kvfp8-soft140-t16-adaptive
 
   # Grille vLLM complète sans changer d'artefact HF.
   vllm_full_grid:
@@ -213,6 +227,21 @@ models:
     vllm_kv_cache_dtype: fp8
     notes: "CANDIDAT Round 1/2 : vLLM FP8 weights + KV FP8, soft140, t16"
 
+  - label: gemma4-e4b-vllm-fp8-kvfp8-soft140-t16-adaptive
+    backend: vllm
+    run_by_default: false
+    model_path: google/gemma-4-E4B-it
+    max_new_tokens: 16
+    vllm_max_soft_tokens: 140
+    vllm_max_model_len: 2048
+    vllm_quantization: fp8
+    vllm_kv_cache_dtype: fp8
+    vllm_adaptive_soft_tokens: nvml_peak_v1
+    vllm_adaptive_peak_power_w: 65.0
+    vllm_adaptive_throttled_soft_tokens: 70
+    vllm_adaptive_cooldown_requests: 3
+    notes: "Probe adaptatif : FP8 + KV FP8, soft140 -> soft70 après pic NVML, t16"
+
   - label: gemma4-e4b-vllm-fp8-kvfp8-soft280-t16
     backend: vllm
     run_by_default: false
@@ -266,6 +295,22 @@ models:
   # =========================================================================
 
   # ---- E4B : grille GGUF Bartowski/Thibault -------------------------------
+  - label: mathos-resilient-challenge-gguf-q4km
+    backend: llama_cpp
+    run_by_default: false
+    gguf_repo: Mathos34400/resilient-challenge-image-to-text
+    gguf_filename: "gemma-4-q4_k_m.gguf"
+    mmproj_repo: Mathos34400/resilient-challenge-image-to-text
+    mmproj_filename: "mmproj-gemma-4-E4B-it-Q8_0.gguf"
+    model_family: gemma4
+    max_new_tokens: 32
+    temperature: 1.0
+    top_p: 0.95
+    top_k: 64
+    n_ctx: 4096
+    n_gpu_layers: -1
+    notes: "Ancre officielle Round 1 Intelligence Lab ECE, GGUF Q4_K_M soumis par Mathos"
+
   - label: gemma4-e4b-gguf-q2k
     backend: llama_cpp
     gguf_repo: bartowski/google_gemma-4-E4B-it-GGUF

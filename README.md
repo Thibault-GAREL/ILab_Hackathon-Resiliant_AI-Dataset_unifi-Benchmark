@@ -220,6 +220,44 @@ docker pull ghcr.io/thibault-garel/ilab_hackathon-resiliant_ai-dataset_unifi-ben
 docker compose run --rm bench bash scripts/bench_safe.sh
 ```
 
+### Jury-like output
+
+Each run also writes a local table shaped like the jury screenshot:
+
+```text
+results/runs/<label>_<timestamp>_leaderboard_like.csv
+results/runs/<label>_<timestamp>_leaderboard_like.md
+```
+
+The CSV columns are:
+
+```text
+team_name,energy_consumption,document_analysis,image_understanding,mean,mean_recovery
+```
+
+The first rows are the official Round 1 anchors: `base_model`, `Top model from Round 1`, `Intelligence Lab ECE`.
+
+Formula:
+
+```text
+document_analysis = mean(docvqa, textvqa, chartqa, infographicvqa)
+image_understanding = mean(vqav2, ok_vqa, coco_captions, realworldqa, scienceqa, ai2d, mathvista, mmmu)
+mean = (document_analysis + image_understanding) / 2
+mean_recovery = mean / 0.7203767372977898 * 100
+energy_consumption = CodeCarbon J/sample
+```
+
+Mathos official anchor smoke:
+
+```bash
+python scripts/bench_all.py \
+  --group jury_like_anchor \
+  --dataset_hub ECE-ILAB/resilient-ai-unified \
+  --dataset_streaming_per_source 1 \
+  --limit_per_source 1 \
+  --country_iso CZE
+```
+
 ### Build the unified dataset from scratch (one-shot, ~40 GB)
 
 ```bash
