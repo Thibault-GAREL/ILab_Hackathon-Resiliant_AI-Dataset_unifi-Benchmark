@@ -550,8 +550,8 @@ def main() -> int:
         official = summary["official_like"]
         print(f"  document        = {_fmt_score(official['document_analysis'])}")
         print(f"  image           = {_fmt_score(official['image_understanding'])}")
-        print(f"  official mean   = {_fmt_score(official['mean'])}")
-        print(f"  recovery        = {_fmt_score(official['mean_recovery'])}")
+        print(f"  moyenne jury    = {_fmt_score(official['mean'])}")
+        print(f"  recovery jury   = {_fmt_score(official['mean_recovery'])}")
     print(f"  n_samples       = {summary['n_samples_total']}")
     print(f"  kWh total       = {summary['energy']['kwh_total']:.6g}")
     print(f"    └─ GPU        = {summary['energy']['kwh_gpu']:.6g}")

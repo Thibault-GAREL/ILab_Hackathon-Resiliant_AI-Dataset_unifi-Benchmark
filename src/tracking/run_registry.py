@@ -412,7 +412,7 @@ def dump_run_artifacts(
         lines.extend(
             [
                 "",
-                "Jury-like",
+                "Format jury",
                 f"document_analysis : {_fmt_optional(official_like.get('document_analysis'))}",
                 f"image_understanding: {_fmt_optional(official_like.get('image_understanding'))}",
                 f"mean               : {_fmt_optional(official_like.get('mean'))}",
