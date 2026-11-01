@@ -21,7 +21,8 @@ Ce repo contient le benchmark d'équipe pour le challenge PEReN Resilient AI à 
 
 Le pipeline construit un dataset vision langage unifié, puis évalue des modèles Gemma 4 et Gemma 3n avec des métriques par source et un suivi énergie CodeCarbon. Le but est de comparer les modèles sur le même protocole, surtout en `J/sample` et `samples/J`, parce que le ranking PEReN est dominé par l'énergie une fois le seuil qualité atteint.
 
-## Fonctionnalités
+<details>
+<summary><b>Fonctionnalités</b></summary>
 
 | Bloc | Rôle |
 |---|---|
@@ -31,6 +32,10 @@ Le pipeline construit un dataset vision langage unifié, puis évalue des modèl
 | Registry | `results/registry.csv`, append-only, une ligne par run |
 | Backends | `transformers`, `llama_cpp`, `vllm` |
 | RunPod | image Docker GHCR, cache HF sur `/workspace`, cleanup optionnel |
+
+</details>
+
+---
 
 ## Structure
 
